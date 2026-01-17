@@ -54,6 +54,7 @@ class JobPaths:
     images_dir: str
     audio: str
     srt: str
+    output_root: str
     output_dir: str   # output/<job>/clips
 
 # =============================================================================
@@ -208,7 +209,7 @@ def discover_jobs(root: str) -> List[str]:
             jobs.append(d)
     return jobs
 
-def build_job_paths(root: str, job_id: str, use_stickman: bool) -> JobPaths:
+def build_job_paths(root: str, job_id: str, use_stickman: bool, output_root: str) -> JobPaths:
     base = os.path.join(root, job_id)
     images_dir = os.path.join(base, "imagens")
 
@@ -228,7 +229,7 @@ def build_job_paths(root: str, job_id: str, use_stickman: bool) -> JobPaths:
     if not srt:
         raise FileNotFoundError(f"[{job_id}] .srt não encontrado (ex: audio.srt)")
 
-    out = os.path.join("output", job_id, "clips")
+    out = os.path.join(output_root, job_id, "clips")
     os.makedirs(out, exist_ok=True)
 
     return JobPaths(
@@ -239,6 +240,7 @@ def build_job_paths(root: str, job_id: str, use_stickman: bool) -> JobPaths:
         images_dir=images_dir,
         audio=audio,
         srt=srt,
+        output_root=output_root,
         output_dir=out
     )
 
@@ -473,7 +475,7 @@ def process_job(paths: JobPaths, use_stickman: bool):
             print_safe(f"[WARN] {warning}")
         rendered.append(out_clip)
 
-    final_video = os.path.join("output", paths.job_id, f"video_final_{paths.job_id}.mp4")
+    final_video = os.path.join(paths.output_root, paths.job_id, f"video_final_{paths.job_id}.mp4")
     print_safe(f"[{total}/{total} | 100%] Concatenando clips + audio")
     concat_job_clips(paths, rendered, final_video)
 
@@ -486,6 +488,7 @@ def process_job(paths: JobPaths, use_stickman: bool):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default="batches", help="Pasta raiz com pastas 01,02,03...")
+    parser.add_argument("--output", default="output", help="Pasta base para os arquivos finais")
     parser.add_argument("--job", help="Renderiza apenas um job (ex: 01). Se omitido, renderiza todos.")
     parser.add_argument("--no-stickman", action="store_true",
                         help="Renderiza sem stickman (somente imagens centralizadas).")
@@ -509,10 +512,10 @@ def main():
             return
         jobs = [args.job]
 
-    os.makedirs("output", exist_ok=True)
+    os.makedirs(args.output, exist_ok=True)
 
     for job_id in jobs:
-        paths = build_job_paths(args.root, job_id, use_stickman=use_stickman)
+        paths = build_job_paths(args.root, job_id, use_stickman=use_stickman, output_root=args.output)
         process_job(paths, use_stickman=use_stickman)
 
 if __name__ == "__main__":

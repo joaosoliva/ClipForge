@@ -198,6 +198,7 @@ class RenderTab(tk.Frame):
         self.status = tk.StringVar(value="Pronto.")
         self.is_running = False
         self.use_stickman = tk.BooleanVar(value=True)
+        self.output_dir = tk.StringVar(value="output")
 
         self._build_ui()
         self._refresh_jobs()
@@ -219,24 +220,31 @@ class RenderTab(tk.Frame):
         tk.Entry(frm, textvariable=self.root_dir, width=60).place(x=90, y=12)
         tk.Button(frm, text="Procurar...", command=self._browse_root, width=14).place(x=600, y=8)
 
-        tk.Label(frm, text="Batches encontrados:", bg="#c0c0c0").place(x=10, y=45)
+        tk.Label(frm, text="Pasta output:", bg="#c0c0c0").place(x=10, y=35)
+        tk.Entry(frm, textvariable=self.output_dir, width=60).place(x=90, y=35)
+        self.btn_browse_output = tk.Button(
+            frm, text="Procurar...", command=self._browse_output, width=14
+        )
+        self.btn_browse_output.place(x=600, y=31)
+
+        tk.Label(frm, text="Batches encontrados:", bg="#c0c0c0").place(x=10, y=60)
         self.listbox = tk.Listbox(frm, height=10, width=40)
-        self.listbox.place(x=10, y=70)
+        self.listbox.place(x=10, y=85)
 
         self.btn_refresh = tk.Button(frm, text="Atualizar", width=22, command=self._refresh_jobs)
-        self.btn_refresh.place(x=350, y=70)
+        self.btn_refresh.place(x=350, y=85)
 
         self.btn_run_sel = tk.Button(frm, text="Renderizar selecionado", width=22, command=self._run_selected)
-        self.btn_run_sel.place(x=350, y=110)
+        self.btn_run_sel.place(x=350, y=125)
 
         self.btn_run_all = tk.Button(frm, text="Renderizar todos", width=22, command=self._run_all)
-        self.btn_run_all.place(x=350, y=150)
+        self.btn_run_all.place(x=350, y=165)
 
         self.btn_open_out = tk.Button(frm, text="Abrir output", width=22, command=self._open_output)
-        self.btn_open_out.place(x=350, y=190)
+        self.btn_open_out.place(x=350, y=205)
 
         self.btn_keep_log = tk.Button(frm, text="Limpar log", width=22, command=self._clear_log)
-        self.btn_keep_log.place(x=350, y=230)
+        self.btn_keep_log.place(x=350, y=245)
 
         # Barra de progresso
         prog_frame = tk.Frame(self, bg="#c0c0c0", bd=2, relief="sunken")
@@ -294,7 +302,14 @@ class RenderTab(tk.Frame):
     def _set_running(self, running: bool):
         self.is_running = running
         state = "disabled" if running else "normal"
-        for b in [self.btn_refresh, self.btn_run_sel, self.btn_run_all, self.btn_open_out, self.btn_keep_log]:
+        for b in [
+            self.btn_refresh,
+            self.btn_run_sel,
+            self.btn_run_all,
+            self.btn_open_out,
+            self.btn_keep_log,
+            self.btn_browse_output,
+        ]:
             b.configure(state=state)
 
     def _browse_root(self):
@@ -302,6 +317,11 @@ class RenderTab(tk.Frame):
         if path:
             self.root_dir.set(path)
             self._refresh_jobs()
+
+    def _browse_output(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.output_dir.set(path)
 
     def _refresh_jobs(self):
         root = self.root_dir.get()
@@ -418,6 +438,7 @@ class RenderTab(tk.Frame):
             return
 
         root = self.root_dir.get()
+        output_root = self.output_dir.get()
 
         def worker():
             self._set_running(True)
@@ -425,7 +446,7 @@ class RenderTab(tk.Frame):
             self.status.set("Processando...")
             self._append_log("C:\\> Iniciando...")
 
-            cmd = [PYTHON_EXEC, "-u", script_path, "--root", root]
+            cmd = [PYTHON_EXEC, "-u", script_path, "--root", root, "--output", output_root]
             if job:
                 cmd += ["--job", job]
             if not self.use_stickman.get():
@@ -477,7 +498,7 @@ class RenderTab(tk.Frame):
         threading.Thread(target=worker, daemon=True).start()
 
     def _open_output(self):
-        out = os.path.abspath("output")
+        out = os.path.abspath(self.output_dir.get())
         if os.path.isdir(out):
             os.startfile(out)
         else:
