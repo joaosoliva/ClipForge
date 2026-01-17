@@ -7,8 +7,6 @@ from tkinter import filedialog, messagebox, ttk
 import json
 import re
 from PIL import Image, ImageTk
-import threading
-from tkinter import filedialog
 from baixar_imagens_google import download_google_images
 
 # ---------------- CONFIG ----------------
@@ -16,6 +14,17 @@ DEFAULT_ROOT = "batches"
 PYTHON_EXEC = sys.executable
 SCRIPT_NAME = "main.py"
 ICON_FILE = "clipforge.ico"
+
+GUIDE_MODES = ["text-only", "image-only", "image-with-text"]
+LAYOUT_OPTIONS = [
+    "image_center_only",
+    "legacy_single",
+    "stickman_center_only",
+    "two_images_center",
+    "stickman_left_3img",
+]
+STICKMAN_ANIM_OPTIONS = ["", "walk_to_final", "pop_to_final", "slide_to_final"]
+STICKMAN_ANIM_DIRECTIONS = ["left", "right"]
 
 PROG_RE = re.compile(r"^\[(\d+)/(\d+)\s*\|\s*(\d+)%\]")
 
@@ -599,23 +608,38 @@ class EditTab(tk.Frame):
 
         for idx in sel:
             item = self.guide_data[idx]
-            img_id = str(item.get("image_id", "")).strip()
-
-            if not img_id.isdigit():
-                skipped += 1
-                continue
-
-            num = int(img_id)
-            new_num = num + delta
-
-            if new_num < 0:
-                skipped += 1
-                continue
-
-            # mantém zero-padding
-            width = len(img_id)
-            item["image_id"] = str(new_num).zfill(width)
-            changed += 1
+            image_ids = item.get("image_ids")
+            if isinstance(image_ids, list) and image_ids:
+                updated = []
+                for img_id in image_ids:
+                    img_id = str(img_id).strip()
+                    if not img_id.isdigit():
+                        skipped += 1
+                        updated.append(img_id)
+                        continue
+                    num = int(img_id)
+                    new_num = num + delta
+                    if new_num < 0:
+                        skipped += 1
+                        updated.append(img_id)
+                        continue
+                    width = len(img_id)
+                    updated.append(str(new_num).zfill(width))
+                    changed += 1
+                item["image_ids"] = updated
+            else:
+                img_id = str(item.get("image_id", "")).strip()
+                if not img_id.isdigit():
+                    skipped += 1
+                    continue
+                num = int(img_id)
+                new_num = num + delta
+                if new_num < 0:
+                    skipped += 1
+                    continue
+                width = len(img_id)
+                item["image_id"] = str(new_num).zfill(width)
+                changed += 1
 
         self._refresh_trigger_list()
 
@@ -640,25 +664,51 @@ class EditTab(tk.Frame):
         self.trigger_entry = tk.Entry(edit_frame, width=50)
         self.trigger_entry.place(x=90, y=45)
 
-        # Image ID
-        tk.Label(edit_frame, text="Image ID:", bg="#c0c0c0").place(x=10, y=80)
-        self.image_id_entry = tk.Entry(edit_frame, width=20)
-        self.image_id_entry.place(x=90, y=80)
+        # Mode + Layout
+        tk.Label(edit_frame, text="Modo:", bg="#c0c0c0").place(x=10, y=80)
+        self.mode_combo = ttk.Combobox(edit_frame, values=GUIDE_MODES, state="readonly", width=18)
+        self.mode_combo.place(x=90, y=80)
+        self.mode_combo.set(GUIDE_MODES[1])
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda e: self._sync_mode_fields())
+
+        tk.Label(edit_frame, text="Layout:", bg="#c0c0c0").place(x=250, y=80)
+        self.layout_combo = ttk.Combobox(edit_frame, values=LAYOUT_OPTIONS, state="readonly", width=18)
+        self.layout_combo.place(x=310, y=80)
+        self.layout_combo.set(LAYOUT_OPTIONS[0])
+
+        # Image IDs
+        tk.Label(edit_frame, text="Image IDs:", bg="#c0c0c0").place(x=10, y=115)
+        self.image_id_entry = tk.Entry(edit_frame, width=50)
+        self.image_id_entry.place(x=90, y=115)
 
         # Text (opcional)
-        tk.Label(edit_frame, text="Texto:", bg="#c0c0c0").place(x=10, y=115)
+        tk.Label(edit_frame, text="Texto:", bg="#c0c0c0").place(x=10, y=150)
         self.text_entry = tk.Entry(edit_frame, width=50)
-        self.text_entry.place(x=90, y=115)
+        self.text_entry.place(x=90, y=150)
+
+        # Stickman animation
+        tk.Label(edit_frame, text="Stickman anim:", bg="#c0c0c0").place(x=10, y=185)
+        self.stickman_anim_combo = ttk.Combobox(
+            edit_frame, values=STICKMAN_ANIM_OPTIONS, state="readonly", width=18
+        )
+        self.stickman_anim_combo.place(x=110, y=185)
+        self.stickman_anim_combo.set("")
+
+        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=250, y=185)
+        self.stickman_anim_dir_combo = ttk.Combobox(
+            edit_frame, values=STICKMAN_ANIM_DIRECTIONS, state="readonly", width=8
+        )
+        self.stickman_anim_dir_combo.place(x=310, y=185)
 
         # Effects
-        tk.Label(edit_frame, text="Effects:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=160)
+        tk.Label(edit_frame, text="Effects:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=210)
 
         # Zoom
         self.zoom_var = tk.BooleanVar()
-        tk.Checkbutton(edit_frame, text="Zoom", variable=self.zoom_var, bg="#c0c0c0").place(x=10, y=185)
+        tk.Checkbutton(edit_frame, text="Zoom", variable=self.zoom_var, bg="#c0c0c0").place(x=10, y=235)
 
         # Slide
-        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=220)
+        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=265)
         self.slide_var = tk.StringVar(value="none")
         slide_options = ["none", "left", "right", "up", "down"]
 
@@ -669,32 +719,32 @@ class EditTab(tk.Frame):
                 variable=self.slide_var,
                 value=opt,
                 bg="#c0c0c0"
-            ).place(x=10 + (i * 70), y=245)
+            ).place(x=10 + (i * 70), y=290)
 
         # Botões de ação
-        tk.Button(edit_frame, text="Aplicar alterações", width=20, command=self._apply_changes).place(x=10, y=290)
-        tk.Button(edit_frame, text="Aplicar effects em lote", width=20, command=self._apply_batch_effects).place(x=200, y=290)
-        tk.Button(edit_frame, text="Adicionar novo trigger", width=20, command=self._add_new_trigger).place(x=10, y=325)
-        
+        tk.Button(edit_frame, text="Aplicar alterações", width=20, command=self._apply_changes).place(x=10, y=330)
+        tk.Button(edit_frame, text="Aplicar effects em lote", width=20, command=self._apply_batch_effects).place(x=200, y=330)
+        tk.Button(edit_frame, text="Adicionar novo trigger", width=20, command=self._add_new_trigger).place(x=10, y=365)
+
         tk.Button(
             edit_frame,
             text="-1 Image ID",
             width=20,
             command=lambda: self._shift_image_id(-1)
-        ).place(x=10, y=360)
+        ).place(x=10, y=400)
 
         tk.Button(
             edit_frame,
             text="+1 Image ID",
             width=20,
             command=lambda: self._shift_image_id(+1)
-        ).place(x=200, y=360)
+        ).place(x=200, y=400)
 
         # Preview da imagem
-        tk.Label(edit_frame, text="Preview:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=365)
+        tk.Label(edit_frame, text="Preview:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=430)
 
         preview_container = tk.Frame(edit_frame, bg="#e0e0e0", relief="sunken", bd=2)
-        preview_container.place(x=10, y=390, width=400, height=115)
+        preview_container.place(x=10, y=450, width=400, height=80)
 
         self.preview_label = tk.Label(preview_container, text="Selecione um item para ver a imagem",
                                       bg="#e0e0e0", fg="#666")
@@ -1017,14 +1067,44 @@ class EditTab(tk.Frame):
         _safe_json_save(self.stickman_path, self.stickman_data)
         self._refresh_stickman_list()
 
+    def _get_item_image_ids(self, item):
+        image_ids = item.get("image_ids")
+        if isinstance(image_ids, list) and image_ids:
+            return [str(i).strip() for i in image_ids if str(i).strip()]
+        image_id = str(item.get("image_id", "")).strip()
+        return [image_id] if image_id else []
+
+    def _format_image_ids(self, item):
+        image_ids = self._get_item_image_ids(item)
+        return ",".join(image_ids)
+
+    def _parse_image_ids_entry(self, entry_value: str):
+        raw = [part.strip() for part in entry_value.split(",")]
+        return [part for part in raw if part]
+
+    def _normalize_mode(self, mode_value: str):
+        mode_value = (mode_value or "").strip().lower().replace("_", "-")
+        return mode_value if mode_value in GUIDE_MODES else GUIDE_MODES[1]
+
+    def _sync_mode_fields(self):
+        mode = self.mode_combo.get()
+        if mode == "text-only":
+            self.image_id_entry.config(state="disabled")
+        else:
+            self.image_id_entry.config(state="normal")
+
     # ---------------- TRIGGER LIST ----------------
 
     def _refresh_trigger_list(self):
         self.trigger_listbox.delete(0, tk.END)
         for i, item in enumerate(self.guide_data):
             trigger = item.get("trigger", "")
-            image_id = item.get("image_id", "")
-            self.trigger_listbox.insert(tk.END, f"{i+1}. {trigger} → {image_id}")
+            mode = self._normalize_mode(item.get("mode", "image-only"))
+            layout = item.get("layout", "legacy_single")
+            image_label = self._format_image_ids(item)
+            self.trigger_listbox.insert(
+                tk.END, f"{i+1}. {trigger} | {mode} | {layout} → {image_label}"
+            )
 
     def _on_trigger_selected(self, event):
         sel = self.trigger_listbox.curselection()
@@ -1046,7 +1126,14 @@ class EditTab(tk.Frame):
             self.trigger_entry.insert(0, item.get("trigger", ""))
 
             self.image_id_entry.delete(0, tk.END)
-            self.image_id_entry.insert(0, item.get("image_id", ""))
+            self.image_id_entry.insert(0, self._format_image_ids(item))
+
+            self.mode_combo.set(self._normalize_mode(item.get("mode", GUIDE_MODES[1])))
+            self.layout_combo.set(item.get("layout", LAYOUT_OPTIONS[0]))
+            self.mode_combo.config(state="readonly")
+            self.layout_combo.config(state="readonly")
+            self.stickman_anim_combo.config(state="readonly")
+            self.stickman_anim_dir_combo.config(state="readonly")
 
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, item.get("text", ""))
@@ -1056,8 +1143,17 @@ class EditTab(tk.Frame):
             self.zoom_var.set(effects.get("zoom", False))
             self.slide_var.set(effects.get("slide", "none") or "none")
 
+            stickman_anim = item.get("stickman_anim") or {}
+            anim_name = stickman_anim.get("name", "") if isinstance(stickman_anim, dict) else ""
+            anim_dir = stickman_anim.get("direction", "") if isinstance(stickman_anim, dict) else ""
+            self.stickman_anim_combo.set(anim_name)
+            self.stickman_anim_dir_combo.set(anim_dir)
+
+            self._sync_mode_fields()
+
             # Preview
-            self._update_preview(item.get("image_id", ""))
+            image_ids = self._get_item_image_ids(item)
+            self._update_preview(image_ids[0] if image_ids else "")
 
             # Sync SRT tab
             self._srt_sync_from_current_selection()
@@ -1073,6 +1169,15 @@ class EditTab(tk.Frame):
             self.image_id_entry.delete(0, tk.END)
             self.image_id_entry.insert(0, "[múltiplos valores]")
             self.image_id_entry.config(state="disabled")
+
+            self.mode_combo.set(GUIDE_MODES[1])
+            self.layout_combo.set(LAYOUT_OPTIONS[0])
+            self.stickman_anim_combo.set("")
+            self.stickman_anim_dir_combo.set("")
+            self.mode_combo.config(state="disabled")
+            self.layout_combo.config(state="disabled")
+            self.stickman_anim_combo.config(state="disabled")
+            self.stickman_anim_dir_combo.config(state="disabled")
 
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, "[múltiplos valores]")
@@ -1091,7 +1196,8 @@ class EditTab(tk.Frame):
 
             # Preview mostra primeira imagem
             first_item = self.guide_data[sel[0]]
-            self._update_preview(first_item.get("image_id", ""))
+            image_ids = self._get_item_image_ids(first_item)
+            self._update_preview(image_ids[0] if image_ids else "")
 
             # SRT tab: não tenta editar (múltiplo)
             self._srt_clear_boxes()
@@ -1102,12 +1208,24 @@ class EditTab(tk.Frame):
             self.after(100, lambda: self.trigger_entry.config(state="normal"))
             self.after(100, lambda: self.image_id_entry.config(state="normal"))
             self.after(100, lambda: self.text_entry.config(state="normal"))
+            self.after(100, lambda: self.mode_combo.config(state="readonly"))
+            self.after(100, lambda: self.layout_combo.config(state="readonly"))
+            self.after(100, lambda: self.stickman_anim_combo.config(state="readonly"))
+            self.after(100, lambda: self.stickman_anim_dir_combo.config(state="readonly"))
 
     # ---------------- IMAGE PREVIEW ----------------
 
     def _update_preview(self, image_id):
         """Carrega e exibe preview da imagem com PIL"""
         if not self.current_batch or not image_id:
+            sel = self.trigger_listbox.curselection()
+            if sel and len(sel) == 1:
+                item = self.guide_data[sel[0]]
+                mode = self._normalize_mode(item.get("mode", GUIDE_MODES[1]))
+                if mode == "text-only":
+                    self.preview_label.config(image='', text="Modo text-only (sem imagem)")
+                    self.current_photo = None
+                    return
             self.preview_label.config(image='', text="Selecione um item para ver a imagem")
             self.current_photo = None
             return
@@ -1169,7 +1287,26 @@ class EditTab(tk.Frame):
         idx = sel[0]
 
         self.guide_data[idx]["trigger"] = self.trigger_entry.get()
-        self.guide_data[idx]["image_id"] = self.image_id_entry.get()
+        mode = self._normalize_mode(self.mode_combo.get())
+        self.guide_data[idx]["mode"] = mode
+
+        layout = self.layout_combo.get() or LAYOUT_OPTIONS[0]
+        self.guide_data[idx]["layout"] = layout
+
+        image_ids = self._parse_image_ids_entry(self.image_id_entry.get())
+        if mode == "text-only":
+            self.guide_data[idx].pop("image_id", None)
+            self.guide_data[idx].pop("image_ids", None)
+        else:
+            if not image_ids:
+                messagebox.showwarning("Aviso", "Informe pelo menos um Image ID para este modo.")
+                return
+            if len(image_ids) == 1:
+                self.guide_data[idx]["image_id"] = image_ids[0]
+                self.guide_data[idx].pop("image_ids", None)
+            else:
+                self.guide_data[idx]["image_ids"] = image_ids
+                self.guide_data[idx].pop("image_id", None)
 
         text = self.text_entry.get()
         if text:
@@ -1189,6 +1326,16 @@ class EditTab(tk.Frame):
             self.guide_data[idx]["effects"] = effects
         elif "effects" in self.guide_data[idx]:
             del self.guide_data[idx]["effects"]
+
+        anim_name = self.stickman_anim_combo.get().strip()
+        anim_direction = self.stickman_anim_dir_combo.get().strip()
+        if anim_name:
+            stickman_anim = {"name": anim_name}
+            if anim_direction:
+                stickman_anim["direction"] = anim_direction
+            self.guide_data[idx]["stickman_anim"] = stickman_anim
+        else:
+            self.guide_data[idx].pop("stickman_anim", None)
 
         self._refresh_trigger_list()
         self.trigger_listbox.selection_set(idx)
@@ -1242,7 +1389,8 @@ class EditTab(tk.Frame):
     def _add_new_trigger(self):
         new_item = {
             "trigger": "novo trigger",
-            "mode": "image_only",
+            "mode": "image-only",
+            "layout": "legacy_single",
             "image_id": "01"
         }
 
@@ -1496,30 +1644,6 @@ class EditTab(tk.Frame):
         )
         self._srt_set_text(self.srt_preview_box, "")
         messagebox.showinfo("OK", "Edição removida em memória. Salve para persistir.")
-
-# Adicione estas importações no início do arquivo gui.py
-# (junto com as outras importações existentes)
-
-# No método __init__ da classe App, adicione:
-def __init__(self):
-    # ... código existente ...
-    
-    # Criar abas (MODIFICADO - adicionar tools_tab)
-    self.render_tab = RenderTab(self.notebook, self.root_dir)
-    self.edit_tab = EditTab(self.notebook, self.root_dir)
-    self.tools_tab = ToolsTab(self.notebook, self.root_dir)  # NOVA ABA
-
-    self.notebook.add(self.render_tab, text="  Render  ")
-    self.notebook.add(self.edit_tab, text="  Edit  ")
-    self.notebook.add(self.tools_tab, text="  Tools  ")  # NOVA ABA
-
-
-# Adicione esta classe ANTES da linha "if __name__ == '__main__':"
-
-# ============================================================
-# COPIE TODO ESTE CÓDIGO E COLE NO gui.py
-# LOGO ANTES DA LINHA: if __name__ == "__main__":
-# ============================================================
 
 class BaseToolLauncher(tk.Frame):
     TOOL_NAME = "Unnamed Tool"

@@ -4,12 +4,26 @@ import json
 import argparse
 import subprocess
 import sys
-import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, List, Dict, Any
 
 import pysrt
 from unidecode import unidecode
+
+from clip_specs import ClipSpec, ImageLayer, StickmanAnim, StickmanLayer
+from config import (
+    AUDIO_EXTENSIONS,
+    END_PAD_SECONDS,
+    FPS,
+    OUT_H,
+    OUT_W,
+    SRT_EDIT_FILENAME,
+    STICKMAN_DEFAULT,
+    STICKMAN_DIR,
+    VALID_EXTS,
+)
+from layouts import resolve_layout
+from renderer_v2 import render_clip
 
 # =============================================================================
 # Console-safe printing (Windows cp1252 friendly)
@@ -26,55 +40,6 @@ def print_safe(s: str):
         enc = sys.stdout.encoding or "cp1252"
         safe = s.encode(enc, errors="replace").decode(enc, errors="replace")
         print(safe, flush=True)
-
-# =============================================================================
-# CONFIG GLOBAL
-# =============================================================================
-
-AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".flac"]
-VALID_EXTS = (".jpg", ".jpeg", ".png", ".gif")
-
-OUT_W = 1920
-OUT_H = 1080
-FPS = 25
-BG_COLOR = "white"
-
-SAFE_H = 864
-
-ZOOM_START = 1.0
-ZOOM_END = 1.06
-SLIDE_DURATION = 0.8
-
-END_PAD_SECONDS = 0.25  # estende o último clip (não mexe em loop)
-
-TEXT_SIZE = 52
-TEXT_COLOR = "black"
-
-STICKMAN_DIR = "input/stickman"
-STICKMAN_DEFAULT = "neutral"
-
-STICKMAN_SCALE = 0.6
-STICKMAN_SIZE = int(1024 * STICKMAN_SCALE)
-STICKMAN_MARGIN_X = 25
-
-STICKMAN_TEXT_SIZE = 36
-STICKMAN_TEXT_COLOR = "black"
-STICKMAN_TEXT_MARGIN = 7
-
-DISABLE_ZOOM_ON_GIFS = True
-
-RESERVED_LEFT = STICKMAN_MARGIN_X + STICKMAN_SIZE + 40  # respiro extra
-RIGHT_MARGIN = 100
-
-# Área padrão quando stickman está ligado
-CONTENT_W = OUT_W - RESERVED_LEFT - RIGHT_MARGIN
-CONTENT_H = SAFE_H
-
-# Fonte usada no drawtext (Windows). Ajuste se necessário.
-FONTFILE = "/Windows/Fonts/comic.ttf"
-
-# Novo: arquivo intermediário (não destrói o SRT original)
-SRT_EDIT_FILENAME = "srt_edit.json"
 
 # =============================================================================
 # MODELOS
@@ -104,17 +69,6 @@ def trigger_in_text(trigger: str, text: str) -> bool:
     if " " in t:
         return t in s
     return re.search(rf"\b{re.escape(t)}\b", s) is not None
-
-def is_gif(path: str) -> bool:
-    return path.lower().endswith(".gif")
-
-def escape_text_for_ffmpeg(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace("%", "\\%")
-    )
 
 def get_audio_duration(path: str) -> float:
     r = subprocess.run(
@@ -344,11 +298,23 @@ def build_timeline(
         mode = mode.replace("_", "-")
         
         # Validação de imagem baseada no mode
-        image = None
+        images: List[str] = []
         if mode in ["image-only", "image-with-text"]:
-            image = find_image_by_id(images_dir, item["image_id"])
-            if not image:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas ID '{item['image_id']}' não encontrada")
+            image_ids = item.get("image_ids")
+            if image_ids is None:
+                image_id = item.get("image_id")
+                image_ids = [image_id] if image_id else []
+            if not image_ids:
+                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
+                continue
+            for image_id in image_ids:
+                image = find_image_by_id(images_dir, image_id)
+                if not image:
+                    print_safe(f"[WARN] Image ID '{image_id}' não encontrada")
+                    continue
+                images.append(image)
+            if not images:
+                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas nenhuma foi encontrada")
                 continue
         
         matched_sub = None
@@ -367,13 +333,15 @@ def build_timeline(
 
         timeline.append({
             "trigger": trigger,
-            "image": image,
+            "images": images,
             "start": matched_sub.start.ordinal / 1000.0,
             "text": item.get("text"),
             "mode": mode,
             "zoom_enabled": item.get("effects", {}).get("zoom", False),
             "slide_direction": item.get("effects", {}).get("slide"),
-            "stickman_cfg": stickman_cfg
+            "stickman_cfg": stickman_cfg,
+            "layout": item.get("layout", "legacy_single"),
+            "stickman_anim": item.get("stickman_anim"),
         })
 
     timeline.sort(key=lambda x: x["start"])
@@ -387,174 +355,6 @@ def build_timeline(
         timeline[i]["duration"] = max(duration, 0.5)
 
     return timeline
-
-# =============================================================================
-# VIDEO
-# =============================================================================
-
-def _compute_layout(use_stickman: bool) -> Tuple[int, int, str]:
-    """
-    Returns target_w, target_h, final_x expression (x position for image overlay).
-    When stickman is OFF -> images centered and can use full width.
-    """
-    if use_stickman:
-        target_w = CONTENT_W
-        target_h = CONTENT_H
-        final_x = f"{RESERVED_LEFT}+({CONTENT_W}-w)/2"
-    else:
-        target_w = OUT_W
-        target_h = SAFE_H
-        final_x = "(W-w)/2"
-    return target_w, target_h, final_x
-
-def create_clip(
-    image_path: Optional[str],
-    duration: float,
-    zoom_enabled: bool,
-    slide_direction: Optional[str],
-    text: Optional[str],
-    stickman_cfg: Optional[Dict[str, str]],
-    out: str,
-    use_stickman: bool
-):
-    if use_stickman:
-        if not stickman_cfg or not stickman_cfg.get("path"):
-            raise RuntimeError(f"Stickman não encontrado para clip {out}")
-
-    total_frames = max(1, int(math.ceil(duration * FPS)))
-
-    inputs: List[str] = []
-
-    # ---------- IMAGE / GIF ----------
-    if image_path:
-        if is_gif(image_path):
-            inputs += ["-stream_loop", "-1", "-ignore_loop", "0", "-i", image_path]
-        else:
-            inputs += ["-loop", "1", "-framerate", str(FPS), "-i", image_path]
-
-    # ---------- BACKGROUND ----------
-    inputs += ["-f", "lavfi", "-i", f"color=c={BG_COLOR}:s={OUT_W}x{OUT_H}:r={FPS}:d={duration}"]
-
-    # ---------- STICKMAN ----------
-    if use_stickman:
-        inputs += ["-loop", "1", "-framerate", str(FPS), "-i", stickman_cfg["path"]]
-
-    img_i = 0 if image_path else None
-    bg_i = 1 if image_path else 0
-    stick_i = (bg_i + 1) if use_stickman else None
-
-    filters: List[str] = [f"[{bg_i}:v]format=rgba[bg]"]
-
-    # ---------- IMAGE FILTER ----------
-    if image_path:
-        target_w, target_h, final_x = _compute_layout(use_stickman)
-        final_y = "(H-h)/2"
-
-        isgif = is_gif(image_path)
-        allow_zoom = zoom_enabled and not (isgif and DISABLE_ZOOM_ON_GIFS)
-
-        if allow_zoom:
-            canvas_w = int(math.ceil(target_w * ZOOM_END))
-            canvas_h = int(math.ceil(target_h * ZOOM_END))
-
-            filters += [
-                f"[{img_i}:v]setsar=1,format=rgba,scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease[img0]",
-                f"color=c={BG_COLOR}:s={canvas_w}x{canvas_h}:r={FPS}:d={duration},format=rgba[can]",
-                f"[can][img0]overlay=(W-w)/2:(H-h)/2[pre]",
-                f"[pre]zoompan="
-                f"z='if(lte(on,1),{ZOOM_START},{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*(on-1)/{total_frames})':"
-                f"x='iw/2-(iw/zoom/2)':"
-                f"y='ih/2-(ih/zoom/2)':"
-                f"d={total_frames}:"
-                f"s={target_w}x{target_h}:fps={FPS}[img]"
-            ]
-        else:
-            filters.append(
-                f"[{img_i}:v]setsar=1,format=rgba,"
-                f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
-                f"fps={FPS}[img]"
-            )
-
-        # Slide opcional (em ambos modos)
-        if slide_direction:
-            sf = max(1, int(SLIDE_DURATION * FPS))
-            if slide_direction == "left":
-                x_expr = f"if(lt(n,{sf}),W-(W-({final_x}))*n/{sf},({final_x}))"
-                y_expr = final_y
-            elif slide_direction == "right":
-                x_expr = f"if(lt(n,{sf}),-w+({final_x}+w)*n/{sf},({final_x}))"
-                y_expr = final_y
-            elif slide_direction == "up":
-                x_expr = final_x
-                y_expr = f"if(lt(n,{sf}),H-(H-({final_y}))*n/{sf},({final_y}))"
-            elif slide_direction == "down":
-                x_expr = final_x
-                y_expr = f"if(lt(n,{sf}),-h+({final_y}+h)*n/{sf},({final_y}))"
-            else:
-                x_expr = final_x
-                y_expr = final_y
-        else:
-            x_expr = final_x
-            y_expr = final_y
-
-        filters.append(f"[bg][img]overlay=x='{x_expr}':y='{y_expr}':shortest=1[v]")
-        cur = "[v]"
-    else:
-        cur = "[bg]"
-
-    # ---------- STICKMAN OVERLAY ----------
-    if use_stickman:
-        filters.append(
-            f"[{stick_i}:v]setsar=1,format=rgba,scale={STICKMAN_SIZE}:{STICKMAN_SIZE}[stick]"
-        )
-        filters.append(
-            f"{cur}[stick]overlay=x={STICKMAN_MARGIN_X}:y='(H-h)/2':shortest=1[v2]"
-        )
-        cur = "[v2]"
-
-    # ---------- MAIN TEXT ----------
-    if text:
-        t = escape_text_for_ffmpeg(text)
-        filters.append(
-            f"{cur}drawtext=fontfile={FONTFILE}:"
-            f"text='{t}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-            f"x=(w-text_w)/2:y=(h-text_h)/2[v3]"
-        )
-        cur = "[v3]"
-
-    # ---------- STICKMAN SPEECH ----------
-    if use_stickman and stickman_cfg and stickman_cfg.get("speech"):
-        sp = escape_text_for_ffmpeg(stickman_cfg["speech"])
-        filters.append(
-            f"{cur}drawtext=fontfile={FONTFILE}:"
-            f"text='{sp}':fontsize={STICKMAN_TEXT_SIZE}:fontcolor={STICKMAN_TEXT_COLOR}:"
-            f"x={STICKMAN_MARGIN_X}+{STICKMAN_SIZE}/2-(text_w/2):"
-            f"y='(H-{STICKMAN_SIZE})/2-text_h-{STICKMAN_TEXT_MARGIN}'[vfinal]"
-        )
-        cur = "[vfinal]"
-
-    cmd = [
-        "ffmpeg", "-y",
-        *inputs,
-        "-filter_complex", ";".join(filters),
-        "-map", cur,
-        "-frames:v", str(total_frames),
-        "-t", str(duration),
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        out
-    ]
-
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(
-            "FFmpeg falhou.\n"
-            f"Arquivo: {out}\n"
-            f"Comando: {' '.join(cmd[:20])} ...\n"
-            f"Stderr:\n{r.stderr}"
-        )
 
 def concat_job_clips(paths: JobPaths, clip_paths: List[str], output_video_path: str):
     """
@@ -620,16 +420,57 @@ def process_job(paths: JobPaths, use_stickman: bool):
 
         out_clip = os.path.join(paths.output_dir, f"clip_{idx-1:03d}.mp4")
 
-        create_clip(
-            image_path=item["image"],
-            duration=item["duration"],
-            zoom_enabled=item["zoom_enabled"],
-            slide_direction=item["slide_direction"],
-            text=item["text"],
-            stickman_cfg=item["stickman_cfg"],
-            out=out_clip,
-            use_stickman=use_stickman
+        images = [
+            ImageLayer(
+                path=image_path,
+                zoom_enabled=item["zoom_enabled"],
+                slide_direction=item["slide_direction"],
+            )
+            for image_path in item["images"]
+        ]
+
+        stickman_layer = None
+        layout_result, layout_warnings = resolve_layout(
+            item["layout"], use_stickman=use_stickman, image_count=len(item["images"])
         )
+        for warning in layout_warnings:
+            print_safe(f"[WARN] {warning}")
+
+        if use_stickman:
+            if layout_result.stickman_pos is None:
+                stickman_layer = None
+            else:
+                if not item["stickman_cfg"] or not item["stickman_cfg"].get("path"):
+                    raise RuntimeError(f"Stickman não encontrado para clip {out_clip}")
+
+                anim_cfg = item.get("stickman_anim")
+                anim = None
+                if isinstance(anim_cfg, dict) and anim_cfg.get("name"):
+                    anim = StickmanAnim(
+                        name=str(anim_cfg.get("name")),
+                        direction=anim_cfg.get("direction"),
+                    )
+
+                stickman_layer = StickmanLayer(
+                    path=item["stickman_cfg"]["path"],
+                    speech=item["stickman_cfg"].get("speech", ""),
+                    anim=anim,
+                )
+
+        clip_spec = ClipSpec(
+            duration=item["duration"],
+            fps=FPS,
+            width=OUT_W,
+            height=OUT_H,
+            layout=item["layout"],
+            images=images,
+            stickman=stickman_layer,
+            text=item["text"],
+        )
+
+        warnings = render_clip(clip_spec, out_clip)
+        for warning in warnings:
+            print_safe(f"[WARN] {warning}")
         rendered.append(out_clip)
 
     final_video = os.path.join("output", paths.job_id, f"video_final_{paths.job_id}.mp4")
