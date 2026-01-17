@@ -49,11 +49,6 @@ def _legacy_single(use_stickman: bool) -> LayoutResult:
     return LayoutResult(name="legacy_single", image_slots=[slot], stickman_pos=stickman_pos)
 
 
-def _image_center_only() -> LayoutResult:
-    slot = ImageSlot(target_w=OUT_W, target_h=SAFE_H, x_expr="(W-w)/2", y_expr="(H-h)/2")
-    return LayoutResult(name="image_center_only", image_slots=[slot], stickman_pos=None)
-
-
 def _stickman_center_only(use_stickman: bool) -> LayoutResult:
     stickman_pos = None
     if use_stickman:
@@ -110,17 +105,6 @@ def _stickman_left_3img(use_stickman: bool) -> LayoutResult:
 def resolve_layout(layout_name: str, use_stickman: bool, image_count: int) -> Tuple[LayoutResult, List[str]]:
     warnings: List[str] = []
     normalized = (layout_name or "legacy_single").strip().lower()
-
-    if normalized == "image_center_only":
-        layout = _image_center_only()
-        if use_stickman:
-            warnings.append("Layout image_center_only ignora stickman.")
-        if image_count < len(layout.image_slots):
-            warnings.append(
-                f"Imagens insuficientes para layout {layout.name}. "
-                f"Esperado {len(layout.image_slots)}, recebido {image_count}."
-            )
-        return layout, warnings
 
     if normalized == "stickman_center_only":
         if not use_stickman:

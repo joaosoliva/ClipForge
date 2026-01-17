@@ -161,11 +161,11 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         )
         filters.append(
             f"[{stick_i}:v]setsar=1,format=rgba,"
-            f"scale='{STICKMAN_SIZE}*({scale_expr})':'{STICKMAN_SIZE}*({scale_expr})':eval=frame"
+            f"scale={STICKMAN_SIZE}*({scale_expr}):{STICKMAN_SIZE}*({scale_expr}):eval=frame"
             f"[stick]"
         )
         filters.append(
-            f"{cur}[stick]overlay=x='{anim_x}':y='{anim_y}':shortest=1[vstick]"
+            f"{cur}[stick]overlay=x={anim_x}:y={anim_y}:shortest=1[vstick]"
         )
         cur = "[vstick]"
 
