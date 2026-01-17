@@ -22,6 +22,7 @@ from config import (
     STICKMAN_DIR,
     VALID_EXTS,
 )
+from layouts import resolve_layout
 from renderer_v2 import render_clip
 
 # =============================================================================
@@ -429,23 +430,32 @@ def process_job(paths: JobPaths, use_stickman: bool):
         ]
 
         stickman_layer = None
+        layout_result, layout_warnings = resolve_layout(
+            item["layout"], use_stickman=use_stickman, image_count=len(item["images"])
+        )
+        for warning in layout_warnings:
+            print_safe(f"[WARN] {warning}")
+
         if use_stickman:
-            if not item["stickman_cfg"] or not item["stickman_cfg"].get("path"):
-                raise RuntimeError(f"Stickman não encontrado para clip {out_clip}")
+            if layout_result.stickman_pos is None:
+                stickman_layer = None
+            else:
+                if not item["stickman_cfg"] or not item["stickman_cfg"].get("path"):
+                    raise RuntimeError(f"Stickman não encontrado para clip {out_clip}")
 
-            anim_cfg = item.get("stickman_anim")
-            anim = None
-            if isinstance(anim_cfg, dict) and anim_cfg.get("name"):
-                anim = StickmanAnim(
-                    name=str(anim_cfg.get("name")),
-                    direction=anim_cfg.get("direction"),
+                anim_cfg = item.get("stickman_anim")
+                anim = None
+                if isinstance(anim_cfg, dict) and anim_cfg.get("name"):
+                    anim = StickmanAnim(
+                        name=str(anim_cfg.get("name")),
+                        direction=anim_cfg.get("direction"),
+                    )
+
+                stickman_layer = StickmanLayer(
+                    path=item["stickman_cfg"]["path"],
+                    speech=item["stickman_cfg"].get("speech", ""),
+                    anim=anim,
                 )
-
-            stickman_layer = StickmanLayer(
-                path=item["stickman_cfg"]["path"],
-                speech=item["stickman_cfg"].get("speech", ""),
-                anim=anim,
-            )
 
         clip_spec = ClipSpec(
             duration=item["duration"],

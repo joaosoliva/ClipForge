@@ -35,6 +35,9 @@ def _escape_text(text: str) -> str:
         .replace("%", "\\%")
     )
 
+def _quote_expr(expr: str) -> str:
+    return f"'{expr}'"
+
 
 def _build_image_filter(
     image: ImageLayer,
@@ -150,7 +153,9 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
-        filters.append(f"{cur}[img]overlay=x='{final_x}':y='{final_y}':shortest=1[v{idx}]")
+        filters.append(
+            f"{cur}[img]overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
+        )
         cur = f"[v{idx}]"
 
     if spec.stickman and layout.stickman_pos and stick_i is not None:
@@ -161,11 +166,11 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         )
         filters.append(
             f"[{stick_i}:v]setsar=1,format=rgba,"
-            f"scale={STICKMAN_SIZE}*({scale_expr}):{STICKMAN_SIZE}*({scale_expr}):eval=frame"
+            f"scale='{STICKMAN_SIZE}*({scale_expr})':'{STICKMAN_SIZE}*({scale_expr})':eval=frame"
             f"[stick]"
         )
         filters.append(
-            f"{cur}[stick]overlay=x={anim_x}:y={anim_y}:shortest=1[vstick]"
+            f"{cur}[stick]overlay=x={_quote_expr(anim_x)}:y={_quote_expr(anim_y)}:shortest=1[vstick]"
         )
         cur = "[vstick]"
 
