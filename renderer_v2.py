@@ -1,0 +1,224 @@
+import math
+import subprocess
+from typing import List
+
+from clip_specs import ClipSpec, ImageLayer, StickmanLayer
+from config import (
+    BG_COLOR,
+    DISABLE_ZOOM_ON_GIFS,
+    FONTFILE,
+    FPS,
+    SLIDE_DURATION,
+    STICKMAN_MARGIN_X,
+    STICKMAN_SIZE,
+    STICKMAN_TEXT_COLOR,
+    STICKMAN_TEXT_MARGIN,
+    STICKMAN_TEXT_SIZE,
+    TEXT_COLOR,
+    TEXT_SIZE,
+    ZOOM_END,
+    ZOOM_START,
+)
+from layouts import resolve_layout
+from stickman_animations import build_stickman_animation
+
+
+def _is_gif(path: str) -> bool:
+    return path.lower().endswith(".gif")
+
+
+def _escape_text(text: str) -> str:
+    return (
+        text.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("%", "\\%")
+    )
+
+
+def _build_image_filter(
+    image: ImageLayer,
+    input_label: str,
+    duration: float,
+    total_frames: int,
+    target_w: int,
+    target_h: int,
+    fps: int,
+) -> List[str]:
+    isgif = _is_gif(image.path)
+    allow_zoom = image.zoom_enabled and not (isgif and DISABLE_ZOOM_ON_GIFS)
+    filters: List[str] = []
+
+    if allow_zoom:
+        canvas_w = int(math.ceil(target_w * ZOOM_END))
+        canvas_h = int(math.ceil(target_h * ZOOM_END))
+        filters += [
+            f"{input_label}setsar=1,format=rgba,"
+            f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease[img0]",
+            f"color=c={BG_COLOR}:s={canvas_w}x{canvas_h}:r={fps}:d={duration},format=rgba[can]",
+            f"[can][img0]overlay=(W-w)/2:(H-h)/2[pre]",
+            f"[pre]zoompan="
+            f"z='if(lte(on,1),{ZOOM_START},{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*(on-1)/{total_frames})':"
+            f"x='iw/2-(iw/zoom/2)':"
+            f"y='ih/2-(ih/zoom/2)':"
+            f"d={total_frames}:"
+            f"s={target_w}x{target_h}:fps={fps}[img]",
+        ]
+    else:
+        filters.append(
+            f"{input_label}setsar=1,format=rgba,"
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
+            f"fps={fps}[img]"
+        )
+
+    return filters
+
+
+def _apply_slide(final_x: str, final_y: str, slide_direction: str, fps: int) -> List[str]:
+    sf = max(1, int(SLIDE_DURATION * fps))
+    if slide_direction == "left":
+        x_expr = f"if(lt(n,{sf}),W-(W-({final_x}))*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "right":
+        x_expr = f"if(lt(n,{sf}),-w+({final_x}+w)*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "up":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),H-(H-({final_y}))*n/{sf},({final_y}))"
+    elif slide_direction == "down":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),-h+({final_y}+h)*n/{sf},({final_y}))"
+    else:
+        x_expr = final_x
+        y_expr = final_y
+    return [x_expr, y_expr]
+
+
+def render_clip(spec: ClipSpec, out: str) -> List[str]:
+    warnings: List[str] = []
+    total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
+
+    layout, layout_warnings = resolve_layout(
+        spec.layout, use_stickman=spec.stickman is not None, image_count=len(spec.images)
+    )
+    warnings.extend(layout_warnings)
+
+    inputs: List[str] = []
+
+    for image in spec.images:
+        if _is_gif(image.path):
+            inputs += ["-stream_loop", "-1", "-ignore_loop", "0", "-i", image.path]
+        else:
+            inputs += ["-loop", "1", "-framerate", str(spec.fps), "-i", image.path]
+
+    inputs += [
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c={BG_COLOR}:s={spec.width}x{spec.height}:r={spec.fps}:d={spec.duration}",
+    ]
+
+    if spec.stickman:
+        inputs += ["-loop", "1", "-framerate", str(spec.fps), "-i", spec.stickman.path]
+
+    bg_i = len(spec.images)
+    stick_i = bg_i + 1 if spec.stickman else None
+
+    filters: List[str] = [f"[{bg_i}:v]format=rgba[bg]"]
+    cur = "[bg]"
+
+    for idx, image in enumerate(spec.images):
+        if idx >= len(layout.image_slots):
+            warnings.append(
+                f"Imagem extra ignorada no layout {layout.name}: {image.path}"
+            )
+            continue
+
+        slot = layout.image_slots[idx]
+        filters += _build_image_filter(
+            image=image,
+            input_label=f"[{idx}:v]",
+            duration=spec.duration,
+            total_frames=total_frames,
+            target_w=slot.target_w,
+            target_h=slot.target_h,
+            fps=spec.fps,
+        )
+
+        final_x = slot.x_expr
+        final_y = slot.y_expr
+        if image.slide_direction:
+            final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
+
+        filters.append(f"{cur}[img]overlay=x='{final_x}':y='{final_y}':shortest=1[v{idx}]")
+        cur = f"[v{idx}]"
+
+    if spec.stickman and layout.stickman_pos and stick_i is not None:
+        stickman = spec.stickman
+        stickman_x, stickman_y = layout.stickman_pos
+        anim_x, anim_y, scale_expr = build_stickman_animation(
+            stickman.anim, total_frames, stickman_x, stickman_y
+        )
+        filters.append(
+            f"[{stick_i}:v]setsar=1,format=rgba,"
+            f"scale={STICKMAN_SIZE}*({scale_expr}):{STICKMAN_SIZE}*({scale_expr}):eval=frame"
+            f"[stick]"
+        )
+        filters.append(
+            f"{cur}[stick]overlay=x={anim_x}:y={anim_y}:shortest=1[vstick]"
+        )
+        cur = "[vstick]"
+
+    if spec.text:
+        text = _escape_text(spec.text)
+        filters.append(
+            f"{cur}drawtext=fontfile={FONTFILE}:"
+            f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
+            f"x=(w-text_w)/2:y=(h-text_h)/2[vtext]"
+        )
+        cur = "[vtext]"
+
+    if spec.stickman and spec.stickman.speech and layout.stickman_pos:
+        stickman_x, _stickman_y = layout.stickman_pos
+        speech = _escape_text(spec.stickman.speech)
+        filters.append(
+            f"{cur}drawtext=fontfile={FONTFILE}:"
+            f"text='{speech}':fontsize={STICKMAN_TEXT_SIZE}:fontcolor={STICKMAN_TEXT_COLOR}:"
+            f"x={stickman_x}+{STICKMAN_SIZE}/2-(text_w/2):"
+            f"y='(H-{STICKMAN_SIZE})/2-text_h-{STICKMAN_TEXT_MARGIN}'[vspeech]"
+        )
+        cur = "[vspeech]"
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *inputs,
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        cur,
+        "-frames:v",
+        str(total_frames),
+        "-t",
+        str(spec.duration),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        out,
+    ]
+
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            "FFmpeg falhou.\n"
+            f"Arquivo: {out}\n"
+            f"Comando: {' '.join(cmd[:20])} ...\n"
+            f"Stderr:\n{r.stderr}"
+        )
+
+    return warnings
