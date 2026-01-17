@@ -431,21 +431,21 @@ def process_job(paths: JobPaths, use_stickman: bool):
         stickman_layer = None
         if use_stickman:
             if not item["stickman_cfg"] or not item["stickman_cfg"].get("path"):
-                raise RuntimeError(f"Stickman não encontrado para clip {out_clip}")
+                print_safe(f"[WARN] Stickman não encontrado para clip {out_clip}. Renderizando sem stickman.")
+            else:
+                anim_cfg = item.get("stickman_anim")
+                anim = None
+                if isinstance(anim_cfg, dict) and anim_cfg.get("name"):
+                    anim = StickmanAnim(
+                        name=str(anim_cfg.get("name")),
+                        direction=anim_cfg.get("direction"),
+                    )
 
-            anim_cfg = item.get("stickman_anim")
-            anim = None
-            if isinstance(anim_cfg, dict) and anim_cfg.get("name"):
-                anim = StickmanAnim(
-                    name=str(anim_cfg.get("name")),
-                    direction=anim_cfg.get("direction"),
+                stickman_layer = StickmanLayer(
+                    path=item["stickman_cfg"]["path"],
+                    speech=item["stickman_cfg"].get("speech", ""),
+                    anim=anim,
                 )
-
-            stickman_layer = StickmanLayer(
-                path=item["stickman_cfg"]["path"],
-                speech=item["stickman_cfg"].get("speech", ""),
-                anim=anim,
-            )
 
         clip_spec = ClipSpec(
             duration=item["duration"],
