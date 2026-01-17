@@ -17,6 +17,7 @@ ICON_FILE = "clipforge.ico"
 
 GUIDE_MODES = ["text-only", "image-only", "image-with-text"]
 LAYOUT_OPTIONS = [
+    "image_center_only",
     "legacy_single",
     "stickman_center_only",
     "two_images_center",
