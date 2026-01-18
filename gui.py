@@ -759,6 +759,7 @@ class EditTab(tk.Frame):
         tk.Button(edit_frame, text="Aplicar alterações", width=20, command=self._apply_changes).place(x=10, y=365)
         tk.Button(edit_frame, text="Aplicar effects em lote", width=20, command=self._apply_batch_effects).place(x=200, y=365)
         tk.Button(edit_frame, text="Adicionar novo trigger", width=20, command=self._add_new_trigger).place(x=10, y=400)
+        tk.Button(edit_frame, text="Desabilitar zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=400)
 
         tk.Button(
             edit_frame,
@@ -1479,6 +1480,31 @@ class EditTab(tk.Frame):
             self.trigger_listbox.selection_set(idx)
 
         messagebox.showinfo("Sucesso", f"Effects aplicados em {len(sel)} itens (lembre-se de salvar)")
+
+    def _disable_batch_zoom(self):
+        if not self.current_batch or not self.guide_data:
+            messagebox.showwarning("Aviso", "Batch não carregado.")
+            return
+
+        if not messagebox.askyesno(
+            "Confirmar",
+            "Desabilitar o zoom de todas as triggers deste batch?\n\n"
+            "Isso remove o efeito de zoom de todos os itens."
+        ):
+            return
+
+        for item in self.guide_data:
+            effects = item.get("effects")
+            if not effects or "zoom" not in effects:
+                continue
+            del effects["zoom"]
+            if not effects:
+                item.pop("effects", None)
+
+        self.zoom_var.set(False)
+        self._refresh_trigger_list()
+        self._srt_sync_from_current_selection()
+        messagebox.showinfo("Sucesso", "Zoom desabilitado em todo o batch (lembre-se de salvar)")
 
     def _add_new_trigger(self):
         new_item = {
