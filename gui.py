@@ -16,6 +16,7 @@ SCRIPT_NAME = "main.py"
 ICON_FILE = "clipforge.ico"
 
 GUIDE_MODES = ["text-only", "image-only", "image-with-text"]
+TEXT_ANCHOR_OPTIONS = ["", "top", "bottom"]
 LAYOUT_OPTIONS = [
     "image_center_only",
     "legacy_single",
@@ -707,29 +708,41 @@ class EditTab(tk.Frame):
         self.text_entry = tk.Entry(edit_frame, width=50)
         self.text_entry.place(x=90, y=150)
 
+        # Text anchor/margin
+        tk.Label(edit_frame, text="Anchor:", bg="#c0c0c0").place(x=10, y=185)
+        self.text_anchor_combo = ttk.Combobox(
+            edit_frame, values=TEXT_ANCHOR_OPTIONS, state="readonly", width=10
+        )
+        self.text_anchor_combo.place(x=90, y=185)
+        self.text_anchor_combo.set(TEXT_ANCHOR_OPTIONS[0])
+
+        tk.Label(edit_frame, text="Margem:", bg="#c0c0c0").place(x=210, y=185)
+        self.text_margin_entry = tk.Entry(edit_frame, width=8)
+        self.text_margin_entry.place(x=270, y=185)
+
         # Stickman animation
-        tk.Label(edit_frame, text="Stickman anim:", bg="#c0c0c0").place(x=10, y=185)
+        tk.Label(edit_frame, text="Stickman anim:", bg="#c0c0c0").place(x=10, y=220)
         self.stickman_anim_combo = ttk.Combobox(
             edit_frame, values=STICKMAN_ANIM_OPTIONS, state="readonly", width=18
         )
-        self.stickman_anim_combo.place(x=110, y=185)
+        self.stickman_anim_combo.place(x=110, y=220)
         self.stickman_anim_combo.set("")
 
-        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=250, y=185)
+        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=250, y=220)
         self.stickman_anim_dir_combo = ttk.Combobox(
             edit_frame, values=STICKMAN_ANIM_DIRECTIONS, state="readonly", width=8
         )
-        self.stickman_anim_dir_combo.place(x=310, y=185)
+        self.stickman_anim_dir_combo.place(x=310, y=220)
 
         # Effects
-        tk.Label(edit_frame, text="Effects:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=210)
+        tk.Label(edit_frame, text="Effects:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=245)
 
         # Zoom
         self.zoom_var = tk.BooleanVar()
-        tk.Checkbutton(edit_frame, text="Zoom", variable=self.zoom_var, bg="#c0c0c0").place(x=10, y=235)
+        tk.Checkbutton(edit_frame, text="Zoom", variable=self.zoom_var, bg="#c0c0c0").place(x=10, y=270)
 
         # Slide
-        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=265)
+        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=300)
         self.slide_var = tk.StringVar(value="none")
         slide_options = ["none", "left", "right", "up", "down"]
 
@@ -740,32 +753,32 @@ class EditTab(tk.Frame):
                 variable=self.slide_var,
                 value=opt,
                 bg="#c0c0c0"
-            ).place(x=10 + (i * 70), y=290)
+            ).place(x=10 + (i * 70), y=325)
 
         # Botões de ação
-        tk.Button(edit_frame, text="Aplicar alterações", width=20, command=self._apply_changes).place(x=10, y=330)
-        tk.Button(edit_frame, text="Aplicar effects em lote", width=20, command=self._apply_batch_effects).place(x=200, y=330)
-        tk.Button(edit_frame, text="Adicionar novo trigger", width=20, command=self._add_new_trigger).place(x=10, y=365)
+        tk.Button(edit_frame, text="Aplicar alterações", width=20, command=self._apply_changes).place(x=10, y=365)
+        tk.Button(edit_frame, text="Aplicar effects em lote", width=20, command=self._apply_batch_effects).place(x=200, y=365)
+        tk.Button(edit_frame, text="Adicionar novo trigger", width=20, command=self._add_new_trigger).place(x=10, y=400)
 
         tk.Button(
             edit_frame,
             text="-1 Image ID",
             width=20,
             command=lambda: self._shift_image_id(-1)
-        ).place(x=10, y=400)
+        ).place(x=10, y=435)
 
         tk.Button(
             edit_frame,
             text="+1 Image ID",
             width=20,
             command=lambda: self._shift_image_id(+1)
-        ).place(x=200, y=400)
+        ).place(x=200, y=435)
 
         # Preview da imagem
-        tk.Label(edit_frame, text="Preview:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=430)
+        tk.Label(edit_frame, text="Preview:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=465)
 
         preview_container = tk.Frame(edit_frame, bg="#e0e0e0", relief="sunken", bd=2)
-        preview_container.place(x=10, y=450, width=400, height=80)
+        preview_container.place(x=10, y=485, width=400, height=80)
 
         self.preview_label = tk.Label(preview_container, text="Selecione um item para ver a imagem",
                                       bg="#e0e0e0", fg="#666")
@@ -1111,8 +1124,12 @@ class EditTab(tk.Frame):
         mode = self.mode_combo.get()
         if mode == "text-only":
             self.image_id_entry.config(state="disabled")
+            self.text_anchor_combo.config(state="disabled")
+            self.text_margin_entry.config(state="disabled")
         else:
             self.image_id_entry.config(state="normal")
+            self.text_anchor_combo.config(state="readonly")
+            self.text_margin_entry.config(state="normal")
 
     # ---------------- TRIGGER LIST ----------------
 
@@ -1159,6 +1176,12 @@ class EditTab(tk.Frame):
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, item.get("text", ""))
 
+            self.text_anchor_combo.set((item.get("text_anchor") or "").strip())
+            self.text_margin_entry.delete(0, tk.END)
+            text_margin = item.get("text_margin")
+            if text_margin is not None:
+                self.text_margin_entry.insert(0, str(text_margin))
+
             # Effects
             effects = item.get("effects", {})
             self.zoom_var.set(effects.get("zoom", False))
@@ -1204,6 +1227,12 @@ class EditTab(tk.Frame):
             self.text_entry.insert(0, "[múltiplos valores]")
             self.text_entry.config(state="disabled")
 
+            self.text_anchor_combo.set(TEXT_ANCHOR_OPTIONS[0])
+            self.text_anchor_combo.config(state="disabled")
+            self.text_margin_entry.delete(0, tk.END)
+            self.text_margin_entry.insert(0, "[múltiplos valores]")
+            self.text_margin_entry.config(state="disabled")
+
             # Effects mantém habilitado para edição em lote
             zoom_states = [self.guide_data[i].get("effects", {}).get("zoom", False) for i in sel]
             if all(zoom_states):
@@ -1229,6 +1258,8 @@ class EditTab(tk.Frame):
             self.after(100, lambda: self.trigger_entry.config(state="normal"))
             self.after(100, lambda: self.image_id_entry.config(state="normal"))
             self.after(100, lambda: self.text_entry.config(state="normal"))
+            self.after(100, lambda: self.text_anchor_combo.config(state="readonly"))
+            self.after(100, lambda: self.text_margin_entry.config(state="normal"))
             self.after(100, lambda: self.mode_combo.config(state="readonly"))
             self.after(100, lambda: self.layout_combo.config(state="readonly"))
             self.after(100, lambda: self.stickman_anim_combo.config(state="readonly"))
@@ -1334,6 +1365,26 @@ class EditTab(tk.Frame):
             self.guide_data[idx]["text"] = text
         elif "text" in self.guide_data[idx]:
             del self.guide_data[idx]["text"]
+
+        if mode == "text-only":
+            self.guide_data[idx].pop("text_anchor", None)
+            self.guide_data[idx].pop("text_margin", None)
+        else:
+            anchor_value = self.text_anchor_combo.get().strip().lower()
+            if anchor_value:
+                self.guide_data[idx]["text_anchor"] = anchor_value
+            else:
+                self.guide_data[idx].pop("text_anchor", None)
+
+            margin_value = self.text_margin_entry.get().strip()
+            if margin_value:
+                try:
+                    self.guide_data[idx]["text_margin"] = int(margin_value)
+                except ValueError:
+                    messagebox.showwarning("Aviso", "Margem inválida. Use um número inteiro.")
+                    return
+            else:
+                self.guide_data[idx].pop("text_margin", None)
 
         effects = {}
         if self.zoom_var.get():

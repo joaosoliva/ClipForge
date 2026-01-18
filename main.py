@@ -333,12 +333,16 @@ def build_timeline(
         if use_stickman:
             stickman_cfg = find_stickman_for_trigger(trigger, stickman_guide, subs)
 
+        text_anchor = item.get("text_anchor")
+        if mode == "image-with-text" and item.get("text") and not text_anchor:
+            text_anchor = "bottom"
+
         timeline.append({
             "trigger": trigger,
             "images": images,
             "start": matched_sub.start.ordinal / 1000.0,
             "text": item.get("text"),
-            "text_anchor": item.get("text_anchor"),
+            "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
             "mode": mode,
             "zoom_enabled": item.get("effects", {}).get("zoom", False),
