@@ -131,6 +131,25 @@ def _apply_slide(final_x: str, final_y: str, slide_direction: str, fps: int) -> 
         y_expr = final_y
     return [x_expr, y_expr]
 
+def _apply_slide_text(final_x: str, final_y: str, slide_direction: str, fps: int) -> List[str]:
+    sf = max(1, int(SLIDE_DURATION * fps))
+    if slide_direction == "left":
+        x_expr = f"if(lt(n,{sf}),W-(W-({final_x}))*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "right":
+        x_expr = f"if(lt(n,{sf}),-text_w+({final_x}+text_w)*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "up":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),H-(H-({final_y}))*n/{sf},({final_y}))"
+    elif slide_direction == "down":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),-text_h+({final_y}+text_h)*n/{sf},({final_y}))"
+    else:
+        x_expr = final_x
+        y_expr = final_y
+    return [x_expr, y_expr]
+
 
 def render_clip(spec: ClipSpec, out: str) -> List[str]:
     warnings: List[str] = []
@@ -193,8 +212,10 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             fps=spec.fps,
         )
 
-        final_x = slot.x_expr
-        final_y = slot.y_expr
+        base_final_x = slot.x_expr
+        base_final_y = slot.y_expr
+        final_x = base_final_x
+        final_y = base_final_y
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
@@ -202,13 +223,15 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             scaled_w, scaled_h = _scaled_image_size(
                 image.path, slot.target_w, slot.target_h, image.zoom_enabled
             )
-            final_x_expr = _replace_expr_vars(final_x, scaled_w, scaled_h)
-            final_y_expr = _replace_expr_vars(final_y, scaled_w, scaled_h)
-            text_x = f"{final_x_expr}+({scaled_w}-text_w)/2"
+            base_final_x_expr = _replace_expr_vars(base_final_x, scaled_w, scaled_h)
+            base_final_y_expr = _replace_expr_vars(base_final_y, scaled_w, scaled_h)
+            text_x = f"{base_final_x_expr}+({scaled_w}-text_w)/2"
             if text_anchor == "top":
-                text_y = f"{final_y_expr}-text_h-{text_margin}"
+                text_y = f"{base_final_y_expr}-text_h-{text_margin}"
             else:
-                text_y = f"{final_y_expr}+{scaled_h}+{text_margin}"
+                text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
+            if image.slide_direction:
+                text_x, text_y = _apply_slide_text(text_x, text_y, image.slide_direction, spec.fps)
             anchored_text_exprs = (text_x, text_y)
 
         filters.append(
