@@ -97,7 +97,7 @@ def _build_image_filter(
             f"color=c={BG_COLOR}:s={canvas_w}x{canvas_h}:r={fps}:d={duration},format=rgba[can]",
             f"[can][img0]overlay=(W-w)/2:(H-h)/2[pre]",
             f"[pre]zoompan="
-            f"z='{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*min(1\\,t/{zoom_duration})':"
+            f"z='{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*(t/{zoom_duration})':"
             f"x='iw/2-(iw/zoom/2)':"
             f"y='ih/2-(ih/zoom/2)':"
             f"d={total_frames}:"
