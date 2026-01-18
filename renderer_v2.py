@@ -45,41 +45,33 @@ def _replace_expr_vars(expr: str, width: int, height: int) -> str:
     expr = re.sub(r"\bh\b", str(height), expr)
     return expr
 
-def _get_image_size(path: str) -> tuple[int, int] | None:
+def _scaled_image_size(path: str, target_w: int, target_h: int, zoom_enabled: bool) -> tuple[int, int]:
+    if zoom_enabled:
+        return target_w, target_h
+    safe_path = path.replace("'", "\\'")
     cmd = [
         "ffprobe",
         "-v",
         "error",
-        "-select_streams",
-        "v:0",
+        "-f",
+        "lavfi",
+        "-i",
+        f"movie='{safe_path}',scale={target_w}:{target_h}:force_original_aspect_ratio=decrease",
         "-show_entries",
         "stream=width,height",
         "-of",
         "csv=s=x:p=0",
-        path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        return None
+        return target_w, target_h
     parts = result.stdout.strip().split("x")
     if len(parts) != 2:
-        return None
+        return target_w, target_h
     try:
         return int(parts[0]), int(parts[1])
     except ValueError:
-        return None
-
-def _scaled_image_size(path: str, target_w: int, target_h: int, zoom_enabled: bool) -> tuple[int, int]:
-    if zoom_enabled:
         return target_w, target_h
-    size = _get_image_size(path)
-    if not size:
-        return target_w, target_h
-    src_w, src_h = size
-    if src_w <= 0 or src_h <= 0:
-        return target_w, target_h
-    scale = min(target_w / src_w, target_h / src_h)
-    return int(round(src_w * scale)), int(round(src_h * scale))
 
 
 def _build_image_filter(

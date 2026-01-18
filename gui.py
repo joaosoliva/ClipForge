@@ -1434,6 +1434,16 @@ class EditTab(tk.Frame):
         ):
             return
 
+        anchor_value = self.text_anchor_combo.get().strip().lower()
+        margin_value = self.text_margin_entry.get().strip()
+        margin_int = None
+        if margin_value:
+            try:
+                margin_int = int(margin_value)
+            except ValueError:
+                messagebox.showwarning("Aviso", "Margem inválida. Use um número inteiro.")
+                return
+
         for idx in sel:
             effects = {}
 
@@ -1451,6 +1461,18 @@ class EditTab(tk.Frame):
             else:
                 if "effects" in self.guide_data[idx]:
                     del self.guide_data[idx]["effects"]
+
+            mode = self._normalize_mode(self.guide_data[idx].get("mode", GUIDE_MODES[1]))
+            if mode != "text-only":
+                if anchor_value:
+                    self.guide_data[idx]["text_anchor"] = anchor_value
+                else:
+                    self.guide_data[idx].pop("text_anchor", None)
+
+                if margin_value:
+                    self.guide_data[idx]["text_margin"] = margin_int
+                else:
+                    self.guide_data[idx].pop("text_margin", None)
 
         self._refresh_trigger_list()
         for idx in sel:
