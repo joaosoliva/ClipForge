@@ -103,7 +103,8 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
     text_anchor = (spec.text_anchor or "").strip().lower()
     text_margin = TEXT_IMAGE_MARGIN if spec.text_margin is None else spec.text_margin
-    text_applied_to_image = False
+    text_applied_to_anchor = False
+    anchored_text_exprs = None
 
     layout, layout_warnings = resolve_layout(
         spec.layout, use_stickman=spec.stickman is not None, image_count=len(spec.images)
@@ -152,27 +153,34 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             fps=spec.fps,
         )
 
-        img_label = "[img]"
-        if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
-            text = _escape_text(spec.text)
-            y_expr = f"{text_margin}" if text_anchor == "top" else f"h-text_h-{text_margin}"
-            filters.append(
-                f"{img_label}drawtext=fontfile={FONTFILE}:"
-                f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-                f"x=(w-text_w)/2:y={y_expr}[imgtext]"
-            )
-            img_label = "[imgtext]"
-            text_applied_to_image = True
-
         final_x = slot.x_expr
         final_y = slot.y_expr
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
+        if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
+            text_x = f"{final_x}+({slot.target_w}-text_w)/2"
+            if text_anchor == "top":
+                text_y = f"{final_y}-text_h-{text_margin}"
+            else:
+                text_y = f"{final_y}+{slot.target_h}+{text_margin}"
+            anchored_text_exprs = (text_x, text_y)
+
         filters.append(
-            f"{cur}{img_label}overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
+            f"{cur}[img]overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
         )
         cur = f"[v{idx}]"
+
+    if spec.text and anchored_text_exprs is not None:
+        text = _escape_text(spec.text)
+        text_x, text_y = anchored_text_exprs
+        filters.append(
+            f"{cur}drawtext=fontfile={FONTFILE}:"
+            f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}[vtext]"
+        )
+        cur = "[vtext]"
+        text_applied_to_anchor = True
 
     if spec.stickman and layout.stickman_pos and stick_i is not None:
         stickman = spec.stickman
@@ -190,7 +198,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         )
         cur = "[vstick]"
 
-    if spec.text and not text_applied_to_image:
+    if spec.text and not text_applied_to_anchor:
         text = _escape_text(spec.text)
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
