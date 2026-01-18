@@ -1,4 +1,5 @@
 import math
+import re
 import subprocess
 from typing import List
 
@@ -38,6 +39,47 @@ def _escape_text(text: str) -> str:
 
 def _quote_expr(expr: str) -> str:
     return f"'{expr}'"
+
+def _replace_expr_vars(expr: str, width: int, height: int) -> str:
+    expr = re.sub(r"\bw\b", str(width), expr)
+    expr = re.sub(r"\bh\b", str(height), expr)
+    return expr
+
+def _get_image_size(path: str) -> tuple[int, int] | None:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+        path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    parts = result.stdout.strip().split("x")
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+
+def _scaled_image_size(path: str, target_w: int, target_h: int, zoom_enabled: bool) -> tuple[int, int]:
+    if zoom_enabled:
+        return target_w, target_h
+    size = _get_image_size(path)
+    if not size:
+        return target_w, target_h
+    src_w, src_h = size
+    if src_w <= 0 or src_h <= 0:
+        return target_w, target_h
+    scale = min(target_w / src_w, target_h / src_h)
+    return int(round(src_w * scale)), int(round(src_h * scale))
 
 
 def _build_image_filter(
@@ -102,7 +144,13 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     warnings: List[str] = []
     total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
     text_anchor = (spec.text_anchor or "").strip().lower()
-    text_margin = TEXT_IMAGE_MARGIN if spec.text_margin is None else spec.text_margin
+    if spec.text_margin is None:
+        text_margin = TEXT_IMAGE_MARGIN
+    else:
+        try:
+            text_margin = int(spec.text_margin)
+        except (TypeError, ValueError):
+            text_margin = TEXT_IMAGE_MARGIN
     text_applied_to_anchor = False
     anchored_text_exprs = None
 
@@ -159,11 +207,16 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
         if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
-            text_x = f"{final_x}+({slot.target_w}-text_w)/2"
+            scaled_w, scaled_h = _scaled_image_size(
+                image.path, slot.target_w, slot.target_h, image.zoom_enabled
+            )
+            final_x_expr = _replace_expr_vars(final_x, scaled_w, scaled_h)
+            final_y_expr = _replace_expr_vars(final_y, scaled_w, scaled_h)
+            text_x = f"{final_x_expr}+({scaled_w}-text_w)/2"
             if text_anchor == "top":
-                text_y = f"{final_y}-text_h-{text_margin}"
+                text_y = f"{final_y_expr}-text_h-{text_margin}"
             else:
-                text_y = f"{final_y}+{slot.target_h}+{text_margin}"
+                text_y = f"{final_y_expr}+{scaled_h}+{text_margin}"
             anchored_text_exprs = (text_x, text_y)
 
         filters.append(
