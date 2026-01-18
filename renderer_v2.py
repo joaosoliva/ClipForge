@@ -15,6 +15,7 @@ from config import (
     STICKMAN_TEXT_MARGIN,
     STICKMAN_TEXT_SIZE,
     TEXT_COLOR,
+    TEXT_IMAGE_MARGIN,
     TEXT_SIZE,
     ZOOM_END,
     ZOOM_START,
@@ -100,6 +101,9 @@ def _apply_slide(final_x: str, final_y: str, slide_direction: str, fps: int) -> 
 def render_clip(spec: ClipSpec, out: str) -> List[str]:
     warnings: List[str] = []
     total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
+    text_anchor = (spec.text_anchor or "").strip().lower()
+    text_margin = TEXT_IMAGE_MARGIN if spec.text_margin is None else spec.text_margin
+    text_applied_to_image = False
 
     layout, layout_warnings = resolve_layout(
         spec.layout, use_stickman=spec.stickman is not None, image_count=len(spec.images)
@@ -148,13 +152,25 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             fps=spec.fps,
         )
 
+        img_label = "[img]"
+        if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
+            text = _escape_text(spec.text)
+            y_expr = f"{text_margin}" if text_anchor == "top" else f"h-text_h-{text_margin}"
+            filters.append(
+                f"{img_label}drawtext=fontfile={FONTFILE}:"
+                f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
+                f"x=(w-text_w)/2:y={y_expr}[imgtext]"
+            )
+            img_label = "[imgtext]"
+            text_applied_to_image = True
+
         final_x = slot.x_expr
         final_y = slot.y_expr
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
         filters.append(
-            f"{cur}[img]overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
+            f"{cur}{img_label}overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
         )
         cur = f"[v{idx}]"
 
@@ -174,7 +190,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         )
         cur = "[vstick]"
 
-    if spec.text:
+    if spec.text and not text_applied_to_image:
         text = _escape_text(spec.text)
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
