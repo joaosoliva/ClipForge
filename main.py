@@ -333,11 +333,17 @@ def build_timeline(
         if use_stickman:
             stickman_cfg = find_stickman_for_trigger(trigger, stickman_guide, subs)
 
+        text_anchor = item.get("text_anchor")
+        if mode == "image-with-text" and item.get("text") and not text_anchor:
+            text_anchor = "bottom"
+
         timeline.append({
             "trigger": trigger,
             "images": images,
             "start": matched_sub.start.ordinal / 1000.0,
             "text": item.get("text"),
+            "text_anchor": text_anchor,
+            "text_margin": item.get("text_margin"),
             "mode": mode,
             "zoom_enabled": item.get("effects", {}).get("zoom", False),
             "slide_direction": item.get("effects", {}).get("slide"),
@@ -468,6 +474,8 @@ def process_job(paths: JobPaths, use_stickman: bool):
             images=images,
             stickman=stickman_layer,
             text=item["text"],
+            text_anchor=item.get("text_anchor"),
+            text_margin=item.get("text_margin"),
         )
 
         warnings = render_clip(clip_spec, out_clip)

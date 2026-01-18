@@ -1,4 +1,5 @@
 import math
+import re
 import subprocess
 from typing import List
 
@@ -15,6 +16,7 @@ from config import (
     STICKMAN_TEXT_MARGIN,
     STICKMAN_TEXT_SIZE,
     TEXT_COLOR,
+    TEXT_IMAGE_MARGIN,
     TEXT_SIZE,
     ZOOM_END,
     ZOOM_START,
@@ -37,6 +39,39 @@ def _escape_text(text: str) -> str:
 
 def _quote_expr(expr: str) -> str:
     return f"'{expr}'"
+
+def _replace_expr_vars(expr: str, width: int, height: int) -> str:
+    expr = re.sub(r"\bw\b", str(width), expr)
+    expr = re.sub(r"\bh\b", str(height), expr)
+    return expr
+
+def _scaled_image_size(path: str, target_w: int, target_h: int, zoom_enabled: bool) -> tuple[int, int]:
+    if zoom_enabled:
+        return target_w, target_h
+    safe_path = path.replace("'", "\\'")
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        f"movie='{safe_path}',scale={target_w}:{target_h}:force_original_aspect_ratio=decrease",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return target_w, target_h
+    parts = result.stdout.strip().split("x")
+    if len(parts) != 2:
+        return target_w, target_h
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return target_w, target_h
 
 
 def _build_image_filter(
@@ -96,10 +131,39 @@ def _apply_slide(final_x: str, final_y: str, slide_direction: str, fps: int) -> 
         y_expr = final_y
     return [x_expr, y_expr]
 
+def _apply_slide_text(final_x: str, final_y: str, slide_direction: str, fps: int) -> List[str]:
+    sf = max(1, int(SLIDE_DURATION * fps))
+    if slide_direction == "left":
+        x_expr = f"if(lt(n,{sf}),W-(W-({final_x}))*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "right":
+        x_expr = f"if(lt(n,{sf}),-text_w+({final_x}+text_w)*n/{sf},({final_x}))"
+        y_expr = final_y
+    elif slide_direction == "up":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),H-(H-({final_y}))*n/{sf},({final_y}))"
+    elif slide_direction == "down":
+        x_expr = final_x
+        y_expr = f"if(lt(n,{sf}),-text_h+({final_y}+text_h)*n/{sf},({final_y}))"
+    else:
+        x_expr = final_x
+        y_expr = final_y
+    return [x_expr, y_expr]
+
 
 def render_clip(spec: ClipSpec, out: str) -> List[str]:
     warnings: List[str] = []
     total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
+    text_anchor = (spec.text_anchor or "").strip().lower()
+    if spec.text_margin is None:
+        text_margin = TEXT_IMAGE_MARGIN
+    else:
+        try:
+            text_margin = int(spec.text_margin)
+        except (TypeError, ValueError):
+            text_margin = TEXT_IMAGE_MARGIN
+    text_applied_to_anchor = False
+    anchored_text_exprs = None
 
     layout, layout_warnings = resolve_layout(
         spec.layout, use_stickman=spec.stickman is not None, image_count=len(spec.images)
@@ -148,15 +212,43 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             fps=spec.fps,
         )
 
-        final_x = slot.x_expr
-        final_y = slot.y_expr
+        base_final_x = slot.x_expr
+        base_final_y = slot.y_expr
+        final_x = base_final_x
+        final_y = base_final_y
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
+
+        if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
+            scaled_w, scaled_h = _scaled_image_size(
+                image.path, slot.target_w, slot.target_h, image.zoom_enabled
+            )
+            base_final_x_expr = _replace_expr_vars(base_final_x, scaled_w, scaled_h)
+            base_final_y_expr = _replace_expr_vars(base_final_y, scaled_w, scaled_h)
+            text_x = f"{base_final_x_expr}+({scaled_w}-text_w)/2"
+            if text_anchor == "top":
+                text_y = f"{base_final_y_expr}-text_h-{text_margin}"
+            else:
+                text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
+            if image.slide_direction:
+                text_x, text_y = _apply_slide_text(text_x, text_y, image.slide_direction, spec.fps)
+            anchored_text_exprs = (text_x, text_y)
 
         filters.append(
             f"{cur}[img]overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
         )
         cur = f"[v{idx}]"
+
+    if spec.text and anchored_text_exprs is not None:
+        text = _escape_text(spec.text)
+        text_x, text_y = anchored_text_exprs
+        filters.append(
+            f"{cur}drawtext=fontfile={FONTFILE}:"
+            f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}[vtext]"
+        )
+        cur = "[vtext]"
+        text_applied_to_anchor = True
 
     if spec.stickman and layout.stickman_pos and stick_i is not None:
         stickman = spec.stickman
@@ -174,7 +266,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         )
         cur = "[vstick]"
 
-    if spec.text:
+    if spec.text and not text_applied_to_anchor:
         text = _escape_text(spec.text)
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"

@@ -32,3 +32,5 @@ class ClipSpec:
     images: List[ImageLayer] = field(default_factory=list)
     stickman: Optional[StickmanLayer] = None
     text: Optional[str] = None
+    text_anchor: Optional[str] = None
+    text_margin: Optional[int] = None

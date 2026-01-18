@@ -16,6 +16,7 @@ END_PAD_SECONDS = 0.25  # estende o último clip (não mexe em loop)
 
 TEXT_SIZE = 52
 TEXT_COLOR = "black"
+TEXT_IMAGE_MARGIN = 16
 
 STICKMAN_DIR = "input/stickman"
 STICKMAN_DEFAULT = "neutral"
