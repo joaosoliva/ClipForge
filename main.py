@@ -288,7 +288,8 @@ def build_timeline(
     stickman_guide,
     audio_path: str,
     images_dir: str,
-    use_stickman: bool
+    use_stickman: bool,
+    disable_zoom: bool = False
 ) -> List[Dict[str, Any]]:
     timeline = []
 
@@ -345,7 +346,7 @@ def build_timeline(
             "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
             "mode": mode,
-            "zoom_enabled": item.get("effects", {}).get("zoom", False),
+            "zoom_enabled": (False if disable_zoom else item.get("effects", {}).get("zoom", False)),
             "slide_direction": item.get("effects", {}).get("slide"),
             "stickman_cfg": stickman_cfg,
             "layout": item.get("layout", "legacy_single"),
@@ -396,7 +397,7 @@ def concat_job_clips(paths: JobPaths, clip_paths: List[str], output_video_path: 
 # PROCESS
 # =============================================================================
 
-def process_job(paths: JobPaths, use_stickman: bool):
+def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
     print_safe(f"\n>> Processando job {paths.job_id}")
     print_safe(f"   Root:  {paths.base}")
     print_safe(f"   Audio: {paths.audio}")
@@ -412,7 +413,8 @@ def process_job(paths: JobPaths, use_stickman: bool):
         stickman_guide,
         paths.audio,
         paths.images_dir,
-        use_stickman=use_stickman
+        use_stickman=use_stickman,
+        disable_zoom=disable_zoom
     )
 
     if not timeline:
@@ -500,6 +502,8 @@ def main():
     parser.add_argument("--job", help="Renderiza apenas um job (ex: 01). Se omitido, renderiza todos.")
     parser.add_argument("--no-stickman", action="store_true",
                         help="Renderiza sem stickman (somente imagens centralizadas).")
+    parser.add_argument("--disable-zoom", action="store_true",
+                        help="Desabilita o zoom de todas as triggers (útil para testes).")
     args = parser.parse_args()
 
     use_stickman = (not args.no_stickman)
@@ -524,7 +528,7 @@ def main():
 
     for job_id in jobs:
         paths = build_job_paths(args.root, job_id, use_stickman=use_stickman, output_root=args.output)
-        process_job(paths, use_stickman=use_stickman)
+        process_job(paths, use_stickman=use_stickman, disable_zoom=args.disable_zoom)
 
 if __name__ == "__main__":
     main()
