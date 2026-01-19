@@ -753,7 +753,7 @@ class EditTab(tk.Frame):
         tk.Label(edit_frame, text="Layout:", bg="#c0c0c0").place(x=250, y=270)
         self.layout_combo = ttk.Combobox(edit_frame, values=LAYOUT_OPTIONS, state="readonly", width=18)
         self.layout_combo.place(x=310, y=270)
-        self.layout_combo.set(LAYOUT_OPTIONS[0])
+        self.layout_combo.set("legacy_single")
         tk.Label(
             edit_frame,
             text="Define como imagens/texto aparecem.",
@@ -810,10 +810,10 @@ class EditTab(tk.Frame):
             ).place(x=10 + (i * 70), y=450)
 
         # Botões de ação
-        tk.Button(edit_frame, text="Salvar item", width=20, command=self._apply_changes).place(x=10, y=465)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=465)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=495)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=495)
+        tk.Button(edit_frame, text="Salvar item", width=20, command=self._apply_changes).place(x=10, y=455)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=455)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=485)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=485)
 
     # ---------------- SRT TAB (new) ----------------
 
@@ -1210,7 +1210,7 @@ class EditTab(tk.Frame):
             self.image_id_entry.insert(0, self._format_image_ids(item))
 
             self.mode_combo.set(self._normalize_mode(item.get("mode", GUIDE_MODES[1])))
-            self.layout_combo.set(item.get("layout", LAYOUT_OPTIONS[0]))
+            self.layout_combo.set(item.get("layout", "legacy_single"))
             self.mode_combo.config(state="readonly")
             self.layout_combo.config(state="readonly")
             self.stickman_anim_combo.config(state="readonly")
@@ -1258,7 +1258,7 @@ class EditTab(tk.Frame):
             self.image_id_entry.config(state="disabled")
 
             self.mode_combo.set(GUIDE_MODES[1])
-            self.layout_combo.set(LAYOUT_OPTIONS[0])
+            self.layout_combo.set("legacy_single")
             self.stickman_anim_combo.set("")
             self.stickman_anim_dir_combo.set("")
             self.mode_combo.config(state="disabled")
@@ -1385,7 +1385,7 @@ class EditTab(tk.Frame):
         mode = self._normalize_mode(self.mode_combo.get())
         self.guide_data[idx]["mode"] = mode
 
-        layout = self.layout_combo.get() or LAYOUT_OPTIONS[0]
+        layout = self.layout_combo.get() or "legacy_single"
         self.guide_data[idx]["layout"] = layout
 
         image_ids = self._parse_image_ids_entry(self.image_id_entry.get())
