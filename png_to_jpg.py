@@ -1,8 +1,9 @@
 import argparse
 import os
+import warnings
 from typing import Optional, Iterable, Tuple
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 DEFAULT_ROOT = "batches"
 
@@ -36,8 +37,14 @@ def convert_pngs_in_batches(root: str, job: Optional[str] = None) -> int:
             png_path = os.path.join(images_dir, filename)
             jpg_path = os.path.join(images_dir, os.path.splitext(filename)[0] + ".jpg")
 
-            with Image.open(png_path) as img:
-                img.convert("RGB").save(jpg_path, "JPEG", quality=95)
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    with Image.open(png_path) as img:
+                        img.convert("RGB").save(jpg_path, "JPEG", quality=95)
+            except (UnidentifiedImageError, OSError) as exc:
+                print(f"[WARN] Batch {job_id}: falha ao converter {filename}: {exc}")
+                continue
 
             os.remove(png_path)
             converted += 1
