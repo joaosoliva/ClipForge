@@ -676,7 +676,34 @@ class EditTab(tk.Frame):
     # ---------------- GUI TAB (original, intact) ----------------
 
     def _build_guia_tab(self):
-        edit_frame = self.tab_guia
+        canvas = tk.Canvas(self.tab_guia, bg="#c0c0c0", highlightthickness=0)
+        scrollbar = tk.Scrollbar(self.tab_guia, orient="vertical", command=canvas.yview)
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        content = tk.Frame(canvas, bg="#c0c0c0")
+
+        window_id = canvas.create_window(
+            (0, 0),
+            window=content,
+            anchor="nw",
+            width=canvas.winfo_reqwidth()
+        )
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(window_id, width=event.width)
+
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        content.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        edit_frame = content
 
         self.selection_label = tk.Label(
             edit_frame,
