@@ -90,14 +90,13 @@ def _build_image_filter(
     if allow_zoom:
         canvas_w = int(math.ceil(target_w * ZOOM_END))
         canvas_h = int(math.ceil(target_h * ZOOM_END))
-        zoom_duration = max(1.0 / fps, duration)
         filters += [
             f"{input_label}setsar=1,format=rgba,"
             f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease[img0]",
             f"color=c={BG_COLOR}:s={canvas_w}x{canvas_h}:r={fps}:d={duration},format=rgba[can]",
             f"[can][img0]overlay=(W-w)/2:(H-h)/2[pre]",
             f"[pre]zoompan="
-            f"z='{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*(t/{zoom_duration})':"
+            f"z='{ZOOM_START}+({ZOOM_END}-{ZOOM_START})*on/(d-1+1e-9)':"
             f"x='iw/2-(iw/zoom/2)':"
             f"y='ih/2-(ih/zoom/2)':"
             f"d={total_frames}:"
