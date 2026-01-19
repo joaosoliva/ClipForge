@@ -703,7 +703,7 @@ class EditTab(tk.Frame):
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        inner = tk.Frame(content, bg="#c0c0c0", width=400, height=600)
+        inner = tk.Frame(content, bg="#c0c0c0", width=400, height=700)
         inner.pack(anchor="nw", fill="both", expand=True, padx=10, pady=10)
         inner.pack_propagate(False)
 
@@ -841,10 +841,10 @@ class EditTab(tk.Frame):
             ).place(x=10 + (i * 70), y=450)
 
         # Botões de ação
-        tk.Button(edit_frame, text="Salvar item", width=20, command=self._apply_changes).place(x=10, y=455)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=455)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=485)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=485)
+        tk.Button(edit_frame, text="Salvar item", width=20, command=self._apply_changes).place(x=10, y=520)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=520)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=555)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=555)
 
     # ---------------- SRT TAB (new) ----------------
 
