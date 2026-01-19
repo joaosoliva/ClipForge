@@ -703,7 +703,10 @@ class EditTab(tk.Frame):
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        edit_frame = content
+        inner = tk.Frame(content, bg="#c0c0c0")
+        inner.pack(anchor="nw", fill="x", padx=10, pady=10)
+
+        edit_frame = inner
 
         self.selection_label = tk.Label(
             edit_frame,
