@@ -545,6 +545,7 @@ class EditTab(tk.Frame):
 
         self._autosave_after_id = None
         self._last_selected_index = None
+        self.guide_status = tk.StringVar(value="guia.json: não carregado")
 
         self._build_ui()
         
@@ -562,6 +563,7 @@ class EditTab(tk.Frame):
         # Limpar UI
         self.trigger_listbox.delete(0, tk.END)
         self.batch_status.config(text="Selecione um batch")
+        self._set_guide_status("guia.json: não carregado", "#666")
 
         self._srt_clear_boxes()
 
@@ -586,6 +588,14 @@ class EditTab(tk.Frame):
 
         self.batch_status = tk.Label(select_frame, text="Selecione um batch", bg="#c0c0c0", fg="#666")
         self.batch_status.place(x=10, y=45)
+        self.guide_status_label = tk.Label(
+            select_frame,
+            textvariable=self.guide_status,
+            bg="#c0c0c0",
+            fg="#666",
+            font=("Arial", 8),
+        )
+        self.guide_status_label.place(x=300, y=45)
 
         # Frame lista de triggers
         list_frame = tk.Frame(self, bg="#c0c0c0", bd=2, relief="groove")
@@ -681,6 +691,7 @@ class EditTab(tk.Frame):
         for idx in sel:
             self.trigger_listbox.selection_set(idx)
 
+        self._set_guide_status("guia.json: alterações pendentes", "#b36b00")
         self._save_guide(show_messages=False)
 
         messagebox.showinfo(
@@ -905,6 +916,7 @@ class EditTab(tk.Frame):
         sel = self.trigger_listbox.curselection()
         if len(sel) != 1:
             return
+        self._set_guide_status("guia.json: alterações pendentes", "#b36b00")
         if self._autosave_after_id:
             self.after_cancel(self._autosave_after_id)
         self._autosave_after_id = self.after(400, self._auto_apply_changes)
@@ -1080,6 +1092,7 @@ class EditTab(tk.Frame):
         guide_file = os.path.join(base, "guia.json")
         if not os.path.exists(guide_file):
             messagebox.showerror("Erro", f"guia.json não encontrado no batch {batch}")
+            self._set_guide_status("guia.json: não carregado", "#666")
             return
 
         self.guide_path = guide_file
@@ -1101,8 +1114,10 @@ class EditTab(tk.Frame):
 
             self._refresh_trigger_list()
             self.batch_status.config(text=f"Batch {self.current_batch}: {len(self.guide_data)} triggers carregados")
+            self._set_guide_status("guia.json carregado", "#666")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar guia.json:\n{e}")
+            self._set_guide_status("guia.json: erro ao carregar", "#a00")
 
     def _load_srt_context(self):
         """Carrega .srt + srt_edit.json (se houver)."""
@@ -1714,21 +1729,29 @@ class EditTab(tk.Frame):
                 self._save_guide(show_messages=False)
                 messagebox.showinfo("Sucesso", f"{len(sel)} triggers removidos")
 
+    def _set_guide_status(self, text: str, color: str):
+        self.guide_status.set(text)
+        if hasattr(self, "guide_status_label"):
+            self.guide_status_label.config(fg=color)
+
     def _save_guide(self, show_messages=True):
         if not self.guide_path:
             if show_messages:
                 messagebox.showwarning("Aviso", "Nenhum guia carregado")
+            self._set_guide_status("guia.json: não carregado", "#666")
             return
 
         try:
             with open(self.guide_path, 'w', encoding='utf-8') as f:
                 json.dump(self.guide_data, f, indent=2, ensure_ascii=False)
 
+            self._set_guide_status("guia.json atualizado", "#2e7d32")
             if show_messages:
                 messagebox.showinfo("Sucesso", f"guia.json salvo em:\n{self.guide_path}")
         except Exception as e:
             if show_messages:
                 messagebox.showerror("Erro", f"Erro ao salvar:\n{e}")
+            self._set_guide_status("guia.json: erro ao salvar", "#a00")
 
     def _reload_guide(self):
         if self.guide_path:
