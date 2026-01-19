@@ -199,6 +199,7 @@ class RenderTab(tk.Frame):
         self.status = tk.StringVar(value="Pronto.")
         self.is_running = False
         self.use_stickman = tk.BooleanVar(value=True)
+        self.convert_png_to_jpg = tk.BooleanVar(value=False)
         self.output_dir = tk.StringVar(value="output")
 
         self._build_ui()
@@ -216,6 +217,14 @@ class RenderTab(tk.Frame):
             bg="#c0c0c0",
             activebackground="#c0c0c0",
         ).place(x=350, y=45)
+
+        tk.Checkbutton(
+            frm,
+            text="Converter PNG para JPG (batches)",
+            variable=self.convert_png_to_jpg,
+            bg="#c0c0c0",
+            activebackground="#c0c0c0",
+        ).place(x=350, y=68)
 
         tk.Label(frm, text="Pasta raiz:", bg="#c0c0c0").place(x=10, y=12)
         tk.Entry(frm, textvariable=self.root_dir, width=60).place(x=90, y=12)
@@ -452,6 +461,8 @@ class RenderTab(tk.Frame):
                 cmd += ["--job", job]
             if not self.use_stickman.get():
                 cmd += ["--no-stickman"]
+            if self.convert_png_to_jpg.get():
+                cmd += ["--convert-png-to-jpg"]
 
             try:
                 proc = subprocess.Popen(
