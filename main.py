@@ -24,6 +24,7 @@ from config import (
 )
 from layouts import resolve_layout
 from renderer_v2 import render_clip
+from png_to_jpg import convert_pngs_in_batches
 
 # =============================================================================
 # Console-safe printing (Windows cp1252 friendly)
@@ -504,6 +505,8 @@ def main():
                         help="Renderiza sem stickman (somente imagens centralizadas).")
     parser.add_argument("--disable-zoom", action="store_true",
                         help="Desabilita o zoom de todas as triggers (útil para testes).")
+    parser.add_argument("--convert-png-to-jpg", action="store_true",
+                        help="Converte PNGs das pastas batches para JPG antes do render.")
     args = parser.parse_args()
 
     use_stickman = (not args.no_stickman)
@@ -525,6 +528,11 @@ def main():
         jobs = [args.job]
 
     os.makedirs(args.output, exist_ok=True)
+
+    if args.convert_png_to_jpg:
+        print_safe("[INFO] Convertendo PNGs para JPG antes do render...")
+        for job_id in jobs:
+            convert_pngs_in_batches(args.root, job_id)
 
     for job_id in jobs:
         paths = build_job_paths(args.root, job_id, use_stickman=use_stickman, output_root=args.output)
