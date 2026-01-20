@@ -2378,7 +2378,7 @@ class ImageDownloaderWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Downloader de Imagens")
-        self.geometry("900x750")
+        self.geometry("900x780")
         self.configure(bg="#c0c0c0")
         self.resizable(False, False)
         self.transient(parent)
@@ -2393,6 +2393,8 @@ class ImageDownloaderWindow(tk.Toplevel):
         # ---------------- Vars ----------------
         self.dest_path = tk.StringVar()
         self.images_per_term = tk.IntVar(value=3)
+        self.extra_tag_wikipedia_cc = tk.BooleanVar(value=False)
+        self.extra_tag_freepik = tk.BooleanVar(value=False)
 
         self._build_ui()
 
@@ -2466,7 +2468,7 @@ class ImageDownloaderWindow(tk.Toplevel):
 
         # === CONFIGURAÇÕES GERAIS ===
         config_frame = tk.Frame(self, bg="#c0c0c0", bd=2, relief="groove")
-        config_frame.place(x=10, y=y, width=860, height=85)
+        config_frame.place(x=10, y=y, width=860, height=115)
 
         # Destino
         tk.Label(config_frame, text="Pasta destino:", bg="#c0c0c0").place(x=10, y=10)
@@ -2482,7 +2484,22 @@ class ImageDownloaderWindow(tk.Toplevel):
             width=6
         ).place(x=140, y=60)
 
-        y += 95
+        # Tags extras
+        tk.Label(config_frame, text="Tags extras:", bg="#c0c0c0").place(x=240, y=60)
+        tk.Checkbutton(
+            config_frame,
+            text="Creative Commons (Wikipedia)",
+            variable=self.extra_tag_wikipedia_cc,
+            bg="#c0c0c0",
+        ).place(x=320, y=58)
+        tk.Checkbutton(
+            config_frame,
+            text="Freepik",
+            variable=self.extra_tag_freepik,
+            bg="#c0c0c0",
+        ).place(x=560, y=58)
+
+        y += 125
 
         # === PROGRESSO ===
         tk.Label(self, text="Progresso do arquivo atual:", bg="#c0c0c0").place(x=10, y=y)
@@ -2764,12 +2781,19 @@ class ImageDownloaderWindow(tk.Toplevel):
                     global_total = total_files * 100
                     self.after(0, self._update_total_progress, global_current, global_total)
 
+                extra_tags = []
+                if self.extra_tag_wikipedia_cc.get():
+                    extra_tags.append('site:wikipedia.org "creative commons"')
+                if self.extra_tag_freepik.get():
+                    extra_tags.append("site:freepik.com")
+
                 # Executar download
                 download_google_images(
                     search_terms_txt=txt_path,
                     dest_root=self.dest_path.get(),
                     images_per_term=self.images_per_term.get(),
                     manual_topic=topic_name,  # Força uso do tópico personalizado
+                    extra_query_tags=extra_tags,
                     resume=resume,
                     on_log=lambda s: self.after(0, self._log, s),
                     on_progress=on_progress,
