@@ -1289,7 +1289,8 @@ class EditTab(tk.Frame):
 
     # ---------------- TRIGGER LIST ----------------
 
-    def _refresh_trigger_list(self):
+    def _refresh_trigger_list(self, restore_view=False):
+        yview = self.trigger_listbox.yview() if restore_view else None
         self.trigger_listbox.delete(0, tk.END)
         for i, item in enumerate(self.guide_data):
             trigger = item.get("trigger", "")
@@ -1299,6 +1300,8 @@ class EditTab(tk.Frame):
             self.trigger_listbox.insert(
                 tk.END, f"{i+1}. {trigger} | {mode} | {layout} → {image_label}"
             )
+        if yview is not None:
+            self.trigger_listbox.yview_moveto(yview[0])
 
     def _on_trigger_selected(self, event):
         if self._autosave_after_id:
@@ -1584,11 +1587,17 @@ class EditTab(tk.Frame):
         else:
             self.guide_data[idx].pop("stickman_anim", None)
 
-        self._refresh_trigger_list()
-        for selected in selected_indices:
-            self.trigger_listbox.selection_set(selected)
-        if not selected_indices:
+        self._refresh_trigger_list(restore_view=True)
+        if selected_indices:
+            for selected in selected_indices:
+                self.trigger_listbox.selection_set(selected)
+            active_index = selected_indices[-1]
+        else:
             self.trigger_listbox.selection_set(idx)
+            active_index = idx
+
+        self.trigger_listbox.activate(active_index)
+        self.trigger_listbox.selection_anchor(active_index)
 
         if autosave:
             self._save_guide(show_messages=False)
