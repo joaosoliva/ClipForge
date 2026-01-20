@@ -3,8 +3,10 @@ import time
 import random
 import json
 import re
+import io
 import requests
 import undetected_chromedriver as uc
+from PIL import Image, UnidentifiedImageError
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
@@ -58,8 +60,38 @@ def parse_search_terms(txt_path: str):
     return topic, terms
 
 
+def normalize_ext(ext: str) -> str:
+    ext = ext.lower().strip(".")
+    if ext == "jpeg":
+        return "jpg"
+    return ext
+
+
 def build_filename(term_idx0: int, img_idx1: int, term: str, ext: str) -> str:
-    return f"{term_idx0+1:02d}_{img_idx1:02d}_{sanitize(term)}.{ext}"
+    return f"{term_idx0+1:02d}_{img_idx1:02d}_{sanitize(term)}.{normalize_ext(ext)}"
+
+
+def extract_image_url(img):
+    src = img.get_attribute("src")
+    if src and src.startswith("http"):
+        return src
+
+    data_src = img.get_attribute("data-src") or img.get_attribute("data-iurl")
+    if data_src and data_src.startswith("http"):
+        return data_src
+
+    srcset = img.get_attribute("srcset")
+    if srcset:
+        candidates = [
+            part.strip().split(" ")[0]
+            for part in srcset.split(",")
+            if part.strip()
+        ]
+        for candidate in reversed(candidates):
+            if candidate.startswith("http"):
+                return candidate
+
+    return None
 
 
 # =========================================================
@@ -71,6 +103,7 @@ def download_google_images(
     dest_root: str,
     images_per_term: int = 3,
     manual_topic: str | None = None,
+    extra_query_tags: list[str] | None = None,
     resume: bool = True,
     on_log=lambda s: print(s),
     on_progress=lambda *args: None,
@@ -167,9 +200,12 @@ def download_google_images(
             term = term_obj["term"]
             tag = term_obj["tag"]
 
-            query = term
+            query_parts = [term]
             if tag in ["[MEME]", "[TECH]"]:
-                query += " gif"
+                query_parts.append("gif")
+            if extra_query_tags:
+                query_parts.extend(extra_query_tags)
+            query = " ".join(query_parts)
 
             url = f"https://www.google.com/search?tbm=isch&q={query}"
             on_log(f"\n[BUSCA] {term} {tag}")
@@ -220,27 +256,68 @@ def download_google_images(
                     success = False
 
                     for big in big_imgs:
-                        src = big.get_attribute("src")
-                        if not src or not src.startswith("http"):
+                        src = extract_image_url(big)
+                        if not src:
                             continue
-
-                        ext = src.split(".")[-1].split("?")[0]
-                        if ext.lower() not in ["jpg", "jpeg", "png", "gif"]:
-                            ext = "jpg"
-
-                        filename = build_filename(term_idx, img_idx, term, ext)
-                        path = os.path.join(final_dir, filename)
-
-                        # Não sobrescrever se já existe
-                        if os.path.exists(path):
-                            on_log(f"[SKIP] {filename} já existe")
-                            success = True
-                            break
 
                         try:
                             r = requests.get(src, timeout=15)
+                            content_type = (r.headers.get("Content-Type") or "").lower()
+                            ext = normalize_ext(src.split(".")[-1].split("?")[0])
+
+                            image_bytes = r.content
+                            detected_ext = None
+
+                            try:
+                                with Image.open(io.BytesIO(image_bytes)) as img:
+                                    fmt = (img.format or "").upper()
+                                    detected_ext = {
+                                        "JPEG": "jpg",
+                                        "JPG": "jpg",
+                                        "PNG": "png",
+                                        "GIF": "gif",
+                                        "WEBP": "webp",
+                                        "AVIF": "avif",
+                                    }.get(fmt)
+
+                                    if detected_ext in ["webp", "avif"]:
+                                        filename = build_filename(term_idx, img_idx, term, "jpg")
+                                        path = os.path.join(final_dir, filename)
+
+                                        if os.path.exists(path):
+                                            on_log(f"[SKIP] {filename} já existe")
+                                            success = True
+                                            break
+
+                                        img = img.convert("RGB")
+                                        img.save(path, "JPEG", quality=95)
+                                        success = True
+                                        on_log(f"[OK] {filename} (convertido de {detected_ext})")
+                                        break
+                            except UnidentifiedImageError:
+                                detected_ext = None
+
+                            if "image/webp" in content_type or "image/avif" in content_type:
+                                if not detected_ext:
+                                    on_log("[ERRO] Conteúdo WebP/AVIF não reconhecido para conversão")
+                                    continue
+                                target_ext = "jpg"
+                            else:
+                                target_ext = ext
+                                if target_ext not in ["jpg", "jpeg", "png", "gif"]:
+                                    target_ext = detected_ext or "jpg"
+
+                            filename = build_filename(term_idx, img_idx, term, target_ext)
+                            path = os.path.join(final_dir, filename)
+
+                            # Não sobrescrever se já existe
+                            if os.path.exists(path):
+                                on_log(f"[SKIP] {filename} já existe")
+                                success = True
+                                break
+
                             with open(path, "wb") as f:
-                                f.write(r.content)
+                                f.write(image_bytes)
                             success = True
                             on_log(f"[OK] {filename}")
                             break
