@@ -294,33 +294,52 @@ def build_timeline(
 ) -> List[Dict[str, Any]]:
     timeline = []
 
-    for item in guide:
+    def _normalize_mode(mode_value: str) -> str:
+        mode_value = (mode_value or "image-only").lower().replace("_", "-")
+        return mode_value
+
+    def _normalize_layout(layout_value: str) -> str:
+        return (layout_value or "legacy_single").strip().lower()
+
+    def _collect_item_images(item: Dict[str, Any], mode: str) -> List[Dict[str, Any]]:
+        if mode not in ["image-only", "image-with-text"]:
+            return []
+
+        image_ids = item.get("image_ids")
+        if image_ids is None:
+            image_id = item.get("image_id")
+            image_ids = [image_id] if image_id else []
+
+        if not image_ids:
+            return []
+
+        effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
+        zoom_enabled = False if disable_zoom else effects.get("zoom", False)
+        slide_direction = effects.get("slide")
+
+        images: List[Dict[str, Any]] = []
+        for image_id in image_ids:
+            image = find_image_by_id(images_dir, image_id)
+            if not image:
+                print_safe(f"[WARN] Image ID '{image_id}' não encontrada")
+                continue
+            images.append({
+                "path": image,
+                "zoom_enabled": zoom_enabled,
+                "slide_direction": slide_direction,
+            })
+
+        return images
+
+    i = 0
+    while i < len(guide):
+        item = guide[i]
         trigger = norm(item["trigger"])
-        
-        # Mode: "text-only", "image-only" (default), "image-with-text"
-        mode = item.get("mode", "image-only").lower()
-        mode = mode.replace("_", "-")
-        
-        # Validação de imagem baseada no mode
-        images: List[str] = []
-        if mode in ["image-only", "image-with-text"]:
-            image_ids = item.get("image_ids")
-            if image_ids is None:
-                image_id = item.get("image_id")
-                image_ids = [image_id] if image_id else []
-            if not image_ids:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
-                continue
-            for image_id in image_ids:
-                image = find_image_by_id(images_dir, image_id)
-                if not image:
-                    print_safe(f"[WARN] Image ID '{image_id}' não encontrada")
-                    continue
-                images.append(image)
-            if not images:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas nenhuma foi encontrada")
-                continue
-        
+
+        mode = _normalize_mode(item.get("mode", "image-only"))
+        layout_name = item.get("layout", "legacy_single")
+        layout_norm = _normalize_layout(layout_name)
+
         matched_sub = None
         for sub in subs:
             if trigger_in_text(trigger, sub.text):
@@ -329,6 +348,42 @@ def build_timeline(
 
         if not matched_sub:
             print_safe(f"[WARN] Trigger '{trigger}' não encontrado no SRT efetivo")
+            i += 1
+            continue
+
+        images: List[Dict[str, Any]] = _collect_item_images(item, mode)
+        consumed = 0
+        if layout_norm in {"two_images_center", "stickman_left_3img"}:
+            required = 2 if layout_norm == "two_images_center" else 3
+            if len(images) < required:
+                needed = required - len(images)
+                for offset in range(1, needed + 1):
+                    child_index = i + offset
+                    if child_index >= len(guide):
+                        break
+                    child_item = guide[child_index]
+                    child_layout_norm = _normalize_layout(child_item.get("layout", "legacy_single"))
+                    if child_layout_norm not in {"legacy_single", "image_center_only"}:
+                        print_safe(
+                            "[WARN] Layout complexo não permitido como filho "
+                            f"em '{child_item.get('trigger', '')}'. "
+                            "Use legacy_single ou image_center_only."
+                        )
+                        break
+                    child_mode = _normalize_mode(child_item.get("mode", "image-only"))
+                    child_images = _collect_item_images(child_item, child_mode)
+                    if not child_images:
+                        print_safe(
+                            f"[WARN] Item filho '{child_item.get('trigger', '')}' "
+                            "não possui imagem para compor layout múltiplo."
+                        )
+                        break
+                    images.extend(child_images[: needed - len(images)])
+                    consumed += 1
+
+        if mode in ["image-only", "image-with-text"] and not images:
+            print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
+            i += 1
             continue
 
         stickman_cfg = None
@@ -347,12 +402,12 @@ def build_timeline(
             "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
             "mode": mode,
-            "zoom_enabled": (False if disable_zoom else item.get("effects", {}).get("zoom", False)),
-            "slide_direction": item.get("effects", {}).get("slide"),
             "stickman_cfg": stickman_cfg,
-            "layout": item.get("layout", "legacy_single"),
+            "layout": layout_name,
             "stickman_anim": item.get("stickman_anim"),
         })
+
+        i += 1 + consumed
 
     timeline.sort(key=lambda x: x["start"])
     audio_duration = get_audio_duration(audio_path)
@@ -433,11 +488,11 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
 
         images = [
             ImageLayer(
-                path=image_path,
-                zoom_enabled=item["zoom_enabled"],
-                slide_direction=item["slide_direction"],
+                path=image["path"],
+                zoom_enabled=image.get("zoom_enabled", False),
+                slide_direction=image.get("slide_direction"),
             )
-            for image_path in item["images"]
+            for image in item["images"]
         ]
 
         stickman_layer = None
