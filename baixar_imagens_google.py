@@ -203,7 +203,7 @@ def download_google_images(
             query_parts = [term]
             if tag in ["[MEME]", "[TECH]"]:
                 query_parts.append("gif")
-            if extra_query_tags:
+            if tag in ["[TECH]", "[STOCK]"] and extra_query_tags:
                 query_parts.extend(extra_query_tags)
             query = " ".join(query_parts)
 
