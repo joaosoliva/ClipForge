@@ -543,6 +543,9 @@ class EditTab(tk.Frame):
         self.srt_phrases = []
         self.current_phrase = None
 
+        self._autosave_after_id = None
+        self._last_selected_index = None
+        self.guide_status = tk.StringVar(value="guia.json: não carregado")
 
         self._build_ui()
         
@@ -560,6 +563,7 @@ class EditTab(tk.Frame):
         # Limpar UI
         self.trigger_listbox.delete(0, tk.END)
         self.batch_status.config(text="Selecione um batch")
+        self._set_guide_status("guia.json: não carregado", "#666")
 
         self._srt_clear_boxes()
 
@@ -584,6 +588,14 @@ class EditTab(tk.Frame):
 
         self.batch_status = tk.Label(select_frame, text="Selecione um batch", bg="#c0c0c0", fg="#666")
         self.batch_status.place(x=10, y=45)
+        self.guide_status_label = tk.Label(
+            select_frame,
+            textvariable=self.guide_status,
+            bg="#c0c0c0",
+            fg="#666",
+            font=("Arial", 8),
+        )
+        self.guide_status_label.place(x=300, y=45)
 
         # Frame lista de triggers
         list_frame = tk.Frame(self, bg="#c0c0c0", bd=2, relief="groove")
@@ -678,6 +690,9 @@ class EditTab(tk.Frame):
 
         for idx in sel:
             self.trigger_listbox.selection_set(idx)
+
+        self._set_guide_status("guia.json: alterações pendentes", "#b36b00")
+        self._save_guide(show_messages=False)
 
         messagebox.showinfo(
             "Image ID atualizado",
@@ -790,7 +805,7 @@ class EditTab(tk.Frame):
         self.mode_combo = ttk.Combobox(edit_frame, values=GUIDE_MODES, state="readonly", width=18)
         self.mode_combo.place(x=90, y=270)
         self.mode_combo.set(GUIDE_MODES[1])
-        self.mode_combo.bind("<<ComboboxSelected>>", lambda e: self._sync_mode_fields())
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda e: self._on_mode_changed())
 
         tk.Label(edit_frame, text="Layout:", bg="#c0c0c0").place(x=250, y=270)
         self.layout_combo = ttk.Combobox(edit_frame, values=LAYOUT_OPTIONS, state="readonly", width=18)
@@ -835,7 +850,13 @@ class EditTab(tk.Frame):
 
         # Zoom
         self.zoom_var = tk.BooleanVar()
-        tk.Checkbutton(edit_frame, text="Zoom", variable=self.zoom_var, bg="#c0c0c0").place(x=10, y=400)
+        tk.Checkbutton(
+            edit_frame,
+            text="Zoom",
+            variable=self.zoom_var,
+            bg="#c0c0c0",
+            command=self._schedule_auto_save,
+        ).place(x=10, y=400)
 
         # Slide
         tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=425)
@@ -848,14 +869,61 @@ class EditTab(tk.Frame):
                 text=opt,
                 variable=self.slide_var,
                 value=opt,
-                bg="#c0c0c0"
+                bg="#c0c0c0",
+                command=self._schedule_auto_save,
             ).place(x=10 + (i * 70), y=450)
 
         # Botões de ação
-        tk.Button(edit_frame, text="Salvar item", width=20, command=self._apply_changes).place(x=10, y=520)
+        tk.Button(
+            edit_frame,
+            text="Salvar item",
+            width=20,
+            command=lambda: self._apply_changes(autosave=True),
+        ).place(x=10, y=520)
         tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=520)
         tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=555)
         tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=555)
+
+        self._bind_autosave_events()
+
+    def _bind_autosave_events(self):
+        entry_widgets = [
+            self.trigger_entry,
+            self.text_entry,
+            self.image_id_entry,
+            self.text_margin_entry,
+        ]
+        for widget in entry_widgets:
+            widget.bind("<KeyRelease>", self._schedule_auto_save)
+            widget.bind("<FocusOut>", self._schedule_auto_save)
+
+        combo_widgets = [
+            self.layout_combo,
+            self.text_anchor_combo,
+            self.stickman_anim_combo,
+            self.stickman_anim_dir_combo,
+        ]
+        for widget in combo_widgets:
+            widget.bind("<<ComboboxSelected>>", self._schedule_auto_save)
+
+    def _on_mode_changed(self):
+        self._sync_mode_fields()
+        self._schedule_auto_save()
+
+    def _schedule_auto_save(self, event=None):
+        if not self.current_batch or not self.guide_path:
+            return
+        sel = self.trigger_listbox.curselection()
+        if len(sel) != 1:
+            return
+        self._set_guide_status("guia.json: alterações pendentes", "#b36b00")
+        if self._autosave_after_id:
+            self.after_cancel(self._autosave_after_id)
+        self._autosave_after_id = self.after(400, self._auto_apply_changes)
+
+    def _auto_apply_changes(self):
+        self._autosave_after_id = None
+        self._apply_changes(show_messages=False, autosave=True)
 
     # ---------------- SRT TAB (new) ----------------
 
@@ -1024,6 +1092,7 @@ class EditTab(tk.Frame):
         guide_file = os.path.join(base, "guia.json")
         if not os.path.exists(guide_file):
             messagebox.showerror("Erro", f"guia.json não encontrado no batch {batch}")
+            self._set_guide_status("guia.json: não carregado", "#666")
             return
 
         self.guide_path = guide_file
@@ -1045,8 +1114,10 @@ class EditTab(tk.Frame):
 
             self._refresh_trigger_list()
             self.batch_status.config(text=f"Batch {self.current_batch}: {len(self.guide_data)} triggers carregados")
+            self._set_guide_status("guia.json carregado", "#666")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar guia.json:\n{e}")
+            self._set_guide_status("guia.json: erro ao carregar", "#a00")
 
     def _load_srt_context(self):
         """Carrega .srt + srt_edit.json (se houver)."""
@@ -1230,16 +1301,24 @@ class EditTab(tk.Frame):
             )
 
     def _on_trigger_selected(self, event):
+        if self._autosave_after_id:
+            self.after_cancel(self._autosave_after_id)
+            self._autosave_after_id = None
+
+        prev_index = self._last_selected_index
         sel = self.trigger_listbox.curselection()
         if not sel:
             self.selection_label.config(text="Nenhum item selecionado. Selecione um trigger à esquerda.")
             self.preview_label.config(image='', text="Selecione um item para ver a imagem")
             self.current_photo = None
             self._srt_clear_boxes()
+            self._last_selected_index = None
             return
 
         # Atualizar label de seleção
         if len(sel) == 1:
+            if prev_index is not None and prev_index != sel[0]:
+                self._apply_changes(show_messages=False, autosave=True, target_index=prev_index)
             self.selection_label.config(text="Editar item selecionado:")
             idx = sel[0]
             item = self.guide_data[idx]
@@ -1286,6 +1365,7 @@ class EditTab(tk.Frame):
 
             # Sync SRT tab
             self._srt_sync_from_current_selection()
+            self._last_selected_index = idx
         else:
             # Múltipla seleção
             self.selection_label.config(text=f"{len(sel)} itens selecionados (edição em lote)")
@@ -1349,6 +1429,7 @@ class EditTab(tk.Frame):
             self.after(100, lambda: self.layout_combo.config(state="readonly"))
             self.after(100, lambda: self.stickman_anim_combo.config(state="readonly"))
             self.after(100, lambda: self.stickman_anim_dir_combo.config(state="readonly"))
+            self._last_selected_index = None
 
     # ---------------- IMAGE PREVIEW ----------------
 
@@ -1411,17 +1492,24 @@ class EditTab(tk.Frame):
 
     # ---------------- GUIDE EDIT (original logic) ----------------
 
-    def _apply_changes(self):
-        sel = self.trigger_listbox.curselection()
-        if not sel:
-            messagebox.showwarning("Aviso", "Selecione um trigger para editar")
-            return
+    def _apply_changes(self, show_messages=True, autosave=False, target_index=None):
+        selected_indices = list(self.trigger_listbox.curselection())
+        if target_index is None:
+            if not selected_indices:
+                if show_messages:
+                    messagebox.showwarning("Aviso", "Selecione um trigger para editar")
+                return False
 
-        if len(sel) > 1:
-            messagebox.showinfo("Info", "Para edição em lote, use 'Aplicar effects em lote'")
-            return
+            if len(selected_indices) > 1:
+                if show_messages:
+                    messagebox.showinfo("Info", "Para edição em lote, use 'Aplicar effects em lote'")
+                return False
 
-        idx = sel[0]
+            idx = selected_indices[0]
+        else:
+            if target_index < 0 or target_index >= len(self.guide_data):
+                return False
+            idx = target_index
 
         self.guide_data[idx]["trigger"] = self.trigger_entry.get()
         mode = self._normalize_mode(self.mode_combo.get())
@@ -1436,8 +1524,9 @@ class EditTab(tk.Frame):
             self.guide_data[idx].pop("image_ids", None)
         else:
             if not image_ids:
-                messagebox.showwarning("Aviso", "Informe pelo menos um Image ID para este modo.")
-                return
+                if show_messages:
+                    messagebox.showwarning("Aviso", "Informe pelo menos um Image ID para este modo.")
+                return False
             if len(image_ids) == 1:
                 self.guide_data[idx]["image_id"] = image_ids[0]
                 self.guide_data[idx].pop("image_ids", None)
@@ -1466,8 +1555,9 @@ class EditTab(tk.Frame):
                 try:
                     self.guide_data[idx]["text_margin"] = int(margin_value)
                 except ValueError:
-                    messagebox.showwarning("Aviso", "Margem inválida. Use um número inteiro.")
-                    return
+                    if show_messages:
+                        messagebox.showwarning("Aviso", "Margem inválida. Use um número inteiro.")
+                    return False
             else:
                 self.guide_data[idx].pop("text_margin", None)
 
@@ -1495,11 +1585,20 @@ class EditTab(tk.Frame):
             self.guide_data[idx].pop("stickman_anim", None)
 
         self._refresh_trigger_list()
-        self.trigger_listbox.selection_set(idx)
-        messagebox.showinfo("Sucesso", "Alterações aplicadas (lembre-se de salvar)")
+        for selected in selected_indices:
+            self.trigger_listbox.selection_set(selected)
+        if not selected_indices:
+            self.trigger_listbox.selection_set(idx)
+
+        if autosave:
+            self._save_guide(show_messages=False)
+
+        if show_messages:
+            messagebox.showinfo("Sucesso", "Alterações aplicadas")
 
         # Atualiza SRT tab também (trigger mudou)
         self._srt_sync_from_current_selection()
+        return True
 
     def _apply_batch_effects(self):
         sel = self.trigger_listbox.curselection()
@@ -1563,7 +1662,8 @@ class EditTab(tk.Frame):
         for idx in sel:
             self.trigger_listbox.selection_set(idx)
 
-        messagebox.showinfo("Sucesso", f"Effects aplicados em {len(sel)} itens (lembre-se de salvar)")
+        self._save_guide(show_messages=False)
+        messagebox.showinfo("Sucesso", f"Effects aplicados em {len(sel)} itens")
 
     def _disable_batch_zoom(self):
         if not self.current_batch or not self.guide_data:
@@ -1588,7 +1688,8 @@ class EditTab(tk.Frame):
         self.zoom_var.set(False)
         self._refresh_trigger_list()
         self._srt_sync_from_current_selection()
-        messagebox.showinfo("Sucesso", "Zoom desabilitado em todo o batch (lembre-se de salvar)")
+        self._save_guide(show_messages=False)
+        messagebox.showinfo("Sucesso", "Zoom desabilitado em todo o batch")
 
     def _add_new_trigger(self):
         new_item = {
@@ -1600,6 +1701,7 @@ class EditTab(tk.Frame):
 
         self.guide_data.append(new_item)
         self._refresh_trigger_list()
+        self._save_guide(show_messages=False)
 
         self.trigger_listbox.selection_clear(0, tk.END)
         self.trigger_listbox.selection_set(tk.END)
@@ -1619,26 +1721,43 @@ class EditTab(tk.Frame):
             if messagebox.askyesno("Confirmar", f"Remover trigger '{trigger}'?"):
                 del self.guide_data[idx]
                 self._refresh_trigger_list()
-                messagebox.showinfo("Sucesso", "Trigger removido (lembre-se de salvar)")
+                if self._last_selected_index == idx:
+                    self._last_selected_index = None
+                self._save_guide(show_messages=False)
+                messagebox.showinfo("Sucesso", "Trigger removido")
         else:
             if messagebox.askyesno("Confirmar", f"Remover {len(sel)} triggers selecionados?"):
                 for idx in reversed(sorted(sel)):
                     del self.guide_data[idx]
                 self._refresh_trigger_list()
-                messagebox.showinfo("Sucesso", f"{len(sel)} triggers removidos (lembre-se de salvar)")
+                if self._last_selected_index is not None:
+                    self._last_selected_index = None
+                self._save_guide(show_messages=False)
+                messagebox.showinfo("Sucesso", f"{len(sel)} triggers removidos")
 
-    def _save_guide(self):
+    def _set_guide_status(self, text: str, color: str):
+        self.guide_status.set(text)
+        if hasattr(self, "guide_status_label"):
+            self.guide_status_label.config(fg=color)
+
+    def _save_guide(self, show_messages=True):
         if not self.guide_path:
-            messagebox.showwarning("Aviso", "Nenhum guia carregado")
+            if show_messages:
+                messagebox.showwarning("Aviso", "Nenhum guia carregado")
+            self._set_guide_status("guia.json: não carregado", "#666")
             return
 
         try:
             with open(self.guide_path, 'w', encoding='utf-8') as f:
                 json.dump(self.guide_data, f, indent=2, ensure_ascii=False)
 
-            messagebox.showinfo("Sucesso", f"guia.json salvo em:\n{self.guide_path}")
+            self._set_guide_status("guia.json atualizado", "#2e7d32")
+            if show_messages:
+                messagebox.showinfo("Sucesso", f"guia.json salvo em:\n{self.guide_path}")
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao salvar:\n{e}")
+            if show_messages:
+                messagebox.showerror("Erro", f"Erro ao salvar:\n{e}")
+            self._set_guide_status("guia.json: erro ao salvar", "#a00")
 
     def _reload_guide(self):
         if self.guide_path:
