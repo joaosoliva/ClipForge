@@ -152,7 +152,7 @@ def download_google_images(
     opts.add_argument(f"user-agent={ua}")
     opts.add_argument("window-size=1200,900")
 
-    driver = uc.Chrome(options=opts)
+    driver = uc.Chrome(options=opts, version_main=143)
 
     def keep_main_tab():
         if len(driver.window_handles) > 1:
