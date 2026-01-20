@@ -94,6 +94,10 @@ def extract_image_url(img):
     return None
 
 
+def sleep_with_jitter(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
+    time.sleep(random.uniform(min_s, max_s) + extra_s)
+
+
 # =========================================================
 # Main downloader (GUI-ready)
 # =========================================================
@@ -105,6 +109,7 @@ def download_google_images(
     manual_topic: str | None = None,
     extra_query_tags: list[str] | None = None,
     resume: bool = True,
+    extra_delay_s: float = 0.0,
     on_log=lambda s: print(s),
     on_progress=lambda *args: None,
     stop_flag=lambda: False,
@@ -151,6 +156,10 @@ def download_google_images(
     opts = Options()
     opts.add_argument(f"user-agent={ua}")
     opts.add_argument("window-size=1200,900")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--no-first-run")
+    opts.add_argument("--no-default-browser-check")
+    opts.add_argument("--lang=pt-BR,pt")
 
     driver = uc.Chrome(options=opts, version_main=143)
 
@@ -210,7 +219,7 @@ def download_google_images(
             url = f"https://www.google.com/search?tbm=isch&q={query}"
             on_log(f"\n[BUSCA] {term} {tag}")
             driver.get(url)
-            time.sleep(5)
+            sleep_with_jitter(4.5, 6.5, extra_delay_s)
 
             thumb_idx = 0
             img_idx = start_img_idx if term_idx == start_term_idx else 1
@@ -242,12 +251,12 @@ def download_google_images(
                     driver.execute_script(
                         "arguments[0].scrollIntoView({block:'center'});", thumb
                     )
-                    time.sleep(random.uniform(0.8, 1.2))
+                    sleep_with_jitter(0.9, 1.5, extra_delay_s)
                     
                     # Clique via JavaScript (evita interceptação)
                     driver.execute_script("arguments[0].click();", thumb)
                     on_log(f"[CLICK] Thumbnail {thumb_idx}/{len(valid_thumbs)}")
-                    time.sleep(random.uniform(3, 4))
+                    sleep_with_jitter(3.2, 4.6, extra_delay_s)
 
                     keep_main_tab()
 
@@ -320,6 +329,7 @@ def download_google_images(
                                 f.write(image_bytes)
                             success = True
                             on_log(f"[OK] {filename}")
+                            sleep_with_jitter(1.8, 3.2, extra_delay_s)
                             break
                         except Exception as e:
                             on_log(f"[ERRO] Falha ao baixar: {e}")
@@ -327,7 +337,7 @@ def download_google_images(
                     # Fecha painel lateral (ESC)
                     try:
                         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-                        time.sleep(1)
+                        sleep_with_jitter(0.8, 1.4, extra_delay_s)
                     except:
                         pass
 
