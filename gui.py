@@ -1507,6 +1507,8 @@ class EditTab(tk.Frame):
 
             idx = selected_indices[0]
         else:
+            if target_index < 0 or target_index >= len(self.guide_data):
+                return False
             idx = target_index
 
         self.guide_data[idx]["trigger"] = self.trigger_entry.get()
@@ -1719,6 +1721,8 @@ class EditTab(tk.Frame):
             if messagebox.askyesno("Confirmar", f"Remover trigger '{trigger}'?"):
                 del self.guide_data[idx]
                 self._refresh_trigger_list()
+                if self._last_selected_index == idx:
+                    self._last_selected_index = None
                 self._save_guide(show_messages=False)
                 messagebox.showinfo("Sucesso", "Trigger removido")
         else:
@@ -1726,6 +1730,8 @@ class EditTab(tk.Frame):
                 for idx in reversed(sorted(sel)):
                     del self.guide_data[idx]
                 self._refresh_trigger_list()
+                if self._last_selected_index is not None:
+                    self._last_selected_index = None
                 self._save_guide(show_messages=False)
                 messagebox.showinfo("Sucesso", f"{len(sel)} triggers removidos")
 
