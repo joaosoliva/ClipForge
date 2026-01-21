@@ -187,8 +187,6 @@ def download_google_images(
     opts.add_argument("--no-first-run")
     opts.add_argument("--no-default-browser-check")
     opts.add_argument("--lang=pt-BR,pt")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
 
     driver = uc.Chrome(options=opts, version_main=143)
     add_stealth_overrides(driver)
