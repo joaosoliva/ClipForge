@@ -8,6 +8,7 @@ import requests
 import undetected_chromedriver as uc
 from PIL import Image, UnidentifiedImageError
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 
@@ -98,6 +99,29 @@ def sleep_with_jitter(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
     time.sleep(random.uniform(min_s, max_s) + extra_s)
 
 
+def add_stealth_overrides(driver) -> None:
+    script = """
+    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+    Object.defineProperty(navigator, 'languages', {get: () => ['pt-BR', 'pt', 'en-US', 'en']});
+    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+    Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+    window.chrome = { runtime: {} };
+    """
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {"source": script},
+    )
+
+
+def human_scroll(driver, extra_delay_s: float = 0.0) -> None:
+    for _ in range(random.randint(1, 3)):
+        driver.execute_script(
+            "window.scrollBy(0, arguments[0]);",
+            random.randint(200, 650),
+        )
+        sleep_with_jitter(0.6, 1.2, extra_delay_s)
+
+
 # =========================================================
 # Main downloader (GUI-ready)
 # =========================================================
@@ -110,6 +134,9 @@ def download_google_images(
     extra_query_tags: list[str] | None = None,
     resume: bool = True,
     extra_delay_s: float = 0.0,
+    cooldown_every: int = 8,
+    cooldown_min_s: float = 18.0,
+    cooldown_max_s: float = 30.0,
     on_log=lambda s: print(s),
     on_progress=lambda *args: None,
     stop_flag=lambda: False,
@@ -155,13 +182,16 @@ def download_google_images(
 
     opts = Options()
     opts.add_argument(f"user-agent={ua}")
-    opts.add_argument("window-size=1200,900")
+    opts.add_argument(f"window-size={random.randint(1180, 1320)},{random.randint(860, 980)}")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--no-first-run")
     opts.add_argument("--no-default-browser-check")
     opts.add_argument("--lang=pt-BR,pt")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
 
     driver = uc.Chrome(options=opts, version_main=143)
+    add_stealth_overrides(driver)
 
     def keep_main_tab():
         if len(driver.window_handles) > 1:
@@ -201,6 +231,7 @@ def download_google_images(
     # Loop principal
     # -----------------------------------------------------
     try:
+        total_downloaded = 0
         for term_idx in range(start_term_idx, len(terms)):
             if stop_flag():
                 break
@@ -220,6 +251,7 @@ def download_google_images(
             on_log(f"\n[BUSCA] {term} {tag}")
             driver.get(url)
             sleep_with_jitter(4.5, 6.5, extra_delay_s)
+            human_scroll(driver, extra_delay_s)
 
             thumb_idx = 0
             img_idx = start_img_idx if term_idx == start_term_idx else 1
@@ -252,7 +284,12 @@ def download_google_images(
                         "arguments[0].scrollIntoView({block:'center'});", thumb
                     )
                     sleep_with_jitter(0.9, 1.5, extra_delay_s)
-                    
+
+                    actions = ActionChains(driver)
+                    actions.move_to_element(thumb).pause(
+                        random.uniform(0.4, 0.9) + extra_delay_s
+                    ).perform()
+
                     # Clique via JavaScript (evita interceptação)
                     driver.execute_script("arguments[0].click();", thumb)
                     on_log(f"[CLICK] Thumbnail {thumb_idx}/{len(valid_thumbs)}")
@@ -342,7 +379,18 @@ def download_google_images(
                         pass
 
                     if success:
+                        total_downloaded += 1
                         img_idx += 1
+
+                        if cooldown_every > 0 and total_downloaded % cooldown_every == 0:
+                            on_log(
+                                f"[PAUSA] Cooldown após {total_downloaded} downloads"
+                            )
+                            sleep_with_jitter(
+                                cooldown_min_s,
+                                cooldown_max_s,
+                                extra_delay_s,
+                            )
                         
                         # Salva estado
                         with open(state_path, "w", encoding="utf-8") as f:
