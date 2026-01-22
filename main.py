@@ -5,7 +5,7 @@ import argparse
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 
 import pysrt
 from unidecode import unidecode
@@ -301,15 +301,18 @@ def build_timeline(
     def _normalize_layout(layout_value: str) -> str:
         return (layout_value or "legacy_single").strip().lower()
 
+    def _get_item_image_ids(item: Dict[str, Any]) -> List[str]:
+        image_ids = item.get("image_ids")
+        if isinstance(image_ids, list) and image_ids:
+            return [str(i).strip() for i in image_ids if str(i).strip()]
+        image_id = str(item.get("image_id", "")).strip()
+        return [image_id] if image_id else []
+
     def _collect_item_images(item: Dict[str, Any], mode: str) -> List[Dict[str, Any]]:
         if mode not in ["image-only", "image-with-text"]:
             return []
 
-        image_ids = item.get("image_ids")
-        if image_ids is None:
-            image_id = item.get("image_id")
-            image_ids = [image_id] if image_id else []
-
+        image_ids = _get_item_image_ids(item)
         if not image_ids:
             return []
 
@@ -331,9 +334,47 @@ def build_timeline(
 
         return images
 
-    i = 0
-    while i < len(guide):
-        item = guide[i]
+    def _build_parent_links():
+        parent_links: Dict[int, List[int]] = {}
+        child_indices: Set[int] = set()
+        i = 0
+        while i < len(guide):
+            item = guide[i]
+            mode = _normalize_mode(item.get("mode", "image-only"))
+            layout_norm = _normalize_layout(item.get("layout", "legacy_single"))
+            if mode in ["image-only", "image-with-text"] and layout_norm in {
+                "two_images_center",
+                "stickman_left_3img",
+            }:
+                required = 2 if layout_norm == "two_images_center" else 3
+                image_count = len(_get_item_image_ids(item))
+                needed = max(required - image_count, 0)
+                children: List[int] = []
+                for offset in range(1, needed + 1):
+                    child_index = i + offset
+                    if child_index >= len(guide):
+                        break
+                    child_item = guide[child_index]
+                    child_layout_norm = _normalize_layout(child_item.get("layout", "legacy_single"))
+                    if child_layout_norm not in {"legacy_single", "image_center_only"}:
+                        print_safe(
+                            "[WARN] Layout complexo não permitido como filho "
+                            f"em '{child_item.get('trigger', '')}'. "
+                            "Use legacy_single ou image_center_only."
+                        )
+                        break
+                    children.append(child_index)
+                if children:
+                    parent_links[i] = children
+                    child_indices.update(children)
+                i += 1 + len(children)
+                continue
+            i += 1
+        return parent_links, child_indices
+
+    parent_links, child_indices = _build_parent_links()
+
+    for idx, item in enumerate(guide):
         trigger = norm(item["trigger"])
 
         mode = _normalize_mode(item.get("mode", "image-only"))
@@ -348,43 +389,34 @@ def build_timeline(
 
         if not matched_sub:
             print_safe(f"[WARN] Trigger '{trigger}' não encontrado no SRT efetivo")
-            i += 1
             continue
 
-        images: List[Dict[str, Any]] = _collect_item_images(item, mode)
-        consumed = 0
-        if layout_norm in {"two_images_center", "stickman_left_3img"}:
+        images: List[Dict[str, Any]] = []
+        allow_empty_images = idx in child_indices
+        if not allow_empty_images:
+            images = _collect_item_images(item, mode)
+        if idx in parent_links:
             required = 2 if layout_norm == "two_images_center" else 3
-            if len(images) < required:
-                needed = required - len(images)
-                for offset in range(1, needed + 1):
-                    child_index = i + offset
-                    if child_index >= len(guide):
-                        break
-                    child_item = guide[child_index]
-                    child_layout_norm = _normalize_layout(child_item.get("layout", "legacy_single"))
-                    if child_layout_norm not in {"legacy_single", "image_center_only"}:
-                        print_safe(
-                            "[WARN] Layout complexo não permitido como filho "
-                            f"em '{child_item.get('trigger', '')}'. "
-                            "Use legacy_single ou image_center_only."
-                        )
-                        break
-                    child_mode = _normalize_mode(child_item.get("mode", "image-only"))
-                    child_images = _collect_item_images(child_item, child_mode)
-                    if not child_images:
-                        print_safe(
-                            f"[WARN] Item filho '{child_item.get('trigger', '')}' "
-                            "não possui imagem para compor layout múltiplo."
-                        )
-                        break
-                    images.extend(child_images[: needed - len(images)])
-                    consumed += 1
+            remaining = required - len(images)
+            for child_index in parent_links[idx]:
+                if remaining <= 0:
+                    break
+                child_item = guide[child_index]
+                child_mode = _normalize_mode(child_item.get("mode", "image-only"))
+                child_images = _collect_item_images(child_item, child_mode)
+                if not child_images:
+                    print_safe(
+                        f"[WARN] Item filho '{child_item.get('trigger', '')}' "
+                        "não possui imagem para compor layout múltiplo."
+                    )
+                    continue
+                images.extend(child_images[:remaining])
+                remaining = required - len(images)
 
         if mode in ["image-only", "image-with-text"] and not images:
-            print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
-            i += 1
-            continue
+            if not allow_empty_images:
+                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
+                continue
 
         stickman_cfg = None
         if use_stickman:
@@ -406,8 +438,6 @@ def build_timeline(
             "layout": layout_name,
             "stickman_anim": item.get("stickman_anim"),
         })
-
-        i += 1 + consumed
 
     timeline.sort(key=lambda x: x["start"])
     audio_duration = get_audio_duration(audio_path)
