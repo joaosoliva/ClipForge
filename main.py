@@ -5,7 +5,7 @@ import argparse
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Set
+from typing import Optional, List, Dict, Any
 
 import pysrt
 from unidecode import unidecode
@@ -336,7 +336,6 @@ def build_timeline(
 
     def _build_parent_links():
         parent_links: Dict[int, List[int]] = {}
-        child_indices: Set[int] = set()
         i = 0
         while i < len(guide):
             item = guide[i]
@@ -366,13 +365,12 @@ def build_timeline(
                     children.append(child_index)
                 if children:
                     parent_links[i] = children
-                    child_indices.update(children)
                 i += 1 + len(children)
                 continue
             i += 1
-        return parent_links, child_indices
+        return parent_links
 
-    parent_links, child_indices = _build_parent_links()
+    parent_links = _build_parent_links()
 
     for idx, item in enumerate(guide):
         trigger = norm(item["trigger"])
@@ -391,10 +389,7 @@ def build_timeline(
             print_safe(f"[WARN] Trigger '{trigger}' não encontrado no SRT efetivo")
             continue
 
-        images: List[Dict[str, Any]] = []
-        allow_empty_images = idx in child_indices
-        if not allow_empty_images:
-            images = _collect_item_images(item, mode)
+        images: List[Dict[str, Any]] = _collect_item_images(item, mode)
         if idx in parent_links:
             required = 2 if layout_norm == "two_images_center" else 3
             remaining = required - len(images)
@@ -414,9 +409,8 @@ def build_timeline(
                 remaining = required - len(images)
 
         if mode in ["image-only", "image-with-text"] and not images:
-            if not allow_empty_images:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
-                continue
+            print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
+            continue
 
         stickman_cfg = None
         if use_stickman:
