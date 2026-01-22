@@ -8,6 +8,7 @@ import requests
 import undetected_chromedriver as uc
 from PIL import Image, UnidentifiedImageError
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 
@@ -94,6 +95,80 @@ def extract_image_url(img):
     return None
 
 
+def sleep_with_jitter(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
+    """Pausa com variação aleatória para simular comportamento humano"""
+    time.sleep(random.uniform(min_s, max_s) + extra_s)
+
+
+def human_like_delay() -> float:
+    """Gera delays mais naturais com distribuição similar ao comportamento humano"""
+    # Usa distribuição exponencial para simular tempos de reação humanos
+    base = random.expovariate(0.5)  # média ~2s
+    jitter = random.uniform(-0.3, 0.8)
+    return max(0.8, min(base + jitter, 6.0))
+
+
+def add_stealth_overrides(driver, platform: str, languages: list[str]) -> None:
+    langs_json = json.dumps(languages)
+    script = f"""
+    Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
+    Object.defineProperty(navigator, 'languages', {{get: () => {langs_json}}});
+    Object.defineProperty(navigator, 'plugins', {{get: () => [1, 2, 3, 4, 5]}});
+    Object.defineProperty(navigator, 'platform', {{get: () => '{platform}'}});
+    Object.defineProperty(navigator, 'hardwareConcurrency', {{get: () => {random.choice([4, 8, 16])}}});
+    Object.defineProperty(navigator, 'deviceMemory', {{get: () => {random.choice([4, 8, 16])}}});
+    if (!window.chrome) {{
+        window.chrome = {{ runtime: {{}} }};
+    }}
+    """
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {"source": script},
+    )
+
+
+def human_scroll(driver, extra_delay_s: float = 0.0) -> None:
+    """Scroll mais natural com pausas e variações"""
+    scroll_count = random.randint(2, 4)
+    for i in range(scroll_count):
+        # Varia a direção ocasionalmente (scroll pra cima também)
+        if random.random() < 0.15:
+            scroll_amount = -random.randint(100, 300)
+        else:
+            scroll_amount = random.randint(250, 550)
+        
+        driver.execute_script(
+            "window.scrollBy(0, arguments[0]);",
+            scroll_amount,
+        )
+        
+        # Pausas mais naturais entre scrolls
+        pause = human_like_delay()
+        time.sleep(pause + extra_delay_s)
+        
+        # Às vezes para por mais tempo (como se estivesse lendo)
+        if random.random() < 0.3:
+            time.sleep(random.uniform(1.5, 3.5))
+
+
+def human_mouse_movement(driver, element) -> None:
+    """Movimento de mouse mais natural"""
+    actions = ActionChains(driver)
+    
+    # Às vezes move para perto do elemento antes
+    if random.random() < 0.4:
+        # Move para uma posição aleatória próxima
+        offset_x = random.randint(-50, 50)
+        offset_y = random.randint(-50, 50)
+        actions.move_to_element_with_offset(element, offset_x, offset_y)
+        actions.pause(random.uniform(0.1, 0.3))
+    
+    # Move para o elemento
+    actions.move_to_element(element)
+    actions.pause(random.uniform(0.3, 0.8))
+    actions.perform()
+
+
 # =========================================================
 # Main downloader (GUI-ready)
 # =========================================================
@@ -105,6 +180,10 @@ def download_google_images(
     manual_topic: str | None = None,
     extra_query_tags: list[str] | None = None,
     resume: bool = True,
+    extra_delay_s: float = 0.0,
+    cooldown_every: int = 5,  # Reduzido de 8 para 5
+    cooldown_min_s: float = 25.0,  # Aumentado de 18
+    cooldown_max_s: float = 45.0,  # Aumentado de 30
     on_log=lambda s: print(s),
     on_progress=lambda *args: None,
     stop_flag=lambda: False,
@@ -112,6 +191,7 @@ def download_google_images(
     """
     - Tudo vai para UMA pasta: dest_root / topic
     - Nome: XX_XX_termo.ext
+    - Configurações anti-CAPTCHA melhoradas
     """
 
     topic_from_txt, terms = parse_search_terms(search_terms_txt)
@@ -139,20 +219,47 @@ def download_google_images(
         on_log(f"[RESUME] Retomando do termo {start_term_idx+1}, imagem {start_img_idx}")
 
     # -----------------------------------------------------
-    # Chrome setup
+    # Chrome setup com mais headers realistas
     # -----------------------------------------------------
     user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-        "Mozilla/5.0 (X11; Linux x86_64)",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     ]
     ua = random.choice(user_agents)
+    if "Macintosh" in ua:
+        platform = "MacIntel"
+        languages = ["pt-BR", "pt", "en-US", "en"]
+    elif "Linux" in ua:
+        platform = "Linux x86_64"
+        languages = ["pt-BR", "pt", "en-US", "en"]
+    else:
+        platform = "Win32"
+        languages = ["pt-BR", "pt", "en-US", "en"]
 
     opts = Options()
     opts.add_argument(f"user-agent={ua}")
-    opts.add_argument("window-size=1200,900")
+    
+    # Tamanho de janela mais comum
+    width = random.choice([1366, 1920, 1440, 1536])
+    height = random.choice([768, 1080, 900, 864])
+    opts.add_argument(f"window-size={width},{height}")
+    
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--no-first-run")
+    opts.add_argument("--no-default-browser-check")
+    opts.add_argument("--lang=pt-BR,pt")
+    opts.add_argument("--disable-dev-shm-usage")
 
-    driver = uc.Chrome(options=opts, version_main=143)
+    # undetected_chromedriver já cuida dessas opções automaticamente
+    driver = uc.Chrome(options=opts, version_main=143, use_subprocess=True)
+    add_stealth_overrides(driver, platform, languages)
+
+    # Adiciona cookies/comportamento inicial mais natural
+    driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+        "userAgent": ua,
+        "acceptLanguage": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+    })
 
     def keep_main_tab():
         if len(driver.window_handles) > 1:
@@ -160,7 +267,7 @@ def download_google_images(
             for h in driver.window_handles[1:]:
                 driver.switch_to.window(h)
                 driver.close()
-                time.sleep(0.3)
+                time.sleep(0.4)  # Aumentado ligeiramente
             driver.switch_to.window(main)
 
     def get_valid_thumbnails():
@@ -169,14 +276,12 @@ def download_google_images(
         Filtra elementos cujo pai é <a> (sugestões relacionadas).
         """
         try:
-            # Busca o container principal de resultados
             results_container = driver.find_element(By.CSS_SELECTOR, 'div.MjjYud')
             all_thumbs = results_container.find_elements(By.CSS_SELECTOR, 'img.YQ4gaf')
         except Exception:
             on_log("[AVISO] Não foi possível encontrar container de resultados")
             return []
 
-        # Filtra apenas thumbnails reais (pai != <a>)
         valid_thumbs = []
         for thumb in all_thumbs:
             try:
@@ -189,9 +294,15 @@ def download_google_images(
         return valid_thumbs
 
     # -----------------------------------------------------
-    # Loop principal
+    # Loop principal com delays aumentados
     # -----------------------------------------------------
     try:
+        total_downloaded = 0
+        
+        # Pausa inicial ao abrir o navegador
+        on_log("[INICIALIZANDO] Aguardando para parecer mais natural...")
+        time.sleep(random.uniform(2.5, 4.5))
+        
         for term_idx in range(start_term_idx, len(terms)):
             if stop_flag():
                 break
@@ -209,12 +320,27 @@ def download_google_images(
 
             url = f"https://www.google.com/search?tbm=isch&q={query}"
             on_log(f"\n[BUSCA] {term} {tag}")
+            
+            # Pausa entre buscas (mais longa)
+            if term_idx > start_term_idx:
+                pause_between_searches = random.uniform(8.0, 15.0) + extra_delay_s
+                on_log(f"[PAUSA] Aguardando {pause_between_searches:.1f}s antes da próxima busca...")
+                time.sleep(pause_between_searches)
+            
             driver.get(url)
-            time.sleep(5)
+            
+            # Espera mais longa após carregar a página
+            initial_load = random.uniform(6.0, 9.0) + extra_delay_s
+            time.sleep(initial_load)
+            
+            # Comportamento humano: às vezes rola a página antes de clicar
+            if random.random() < 0.7:
+                human_scroll(driver, extra_delay_s)
 
             thumb_idx = 0
             img_idx = start_img_idx if term_idx == start_term_idx else 1
-            valid_thumbs = []  # Cache dos thumbnails
+            valid_thumbs = []
+            consecutive_failures = 0  # Contador de falhas consecutivas
 
             while img_idx <= images_per_term:
                 if stop_flag():
@@ -222,7 +348,7 @@ def download_google_images(
 
                 keep_main_tab()
 
-                # Busca thumbnails apenas uma vez (ou quando necessário)
+                # Busca thumbnails
                 if not valid_thumbs or thumb_idx >= len(valid_thumbs):
                     valid_thumbs = get_valid_thumbnails()
                     
@@ -238,16 +364,24 @@ def download_google_images(
                 thumb_idx += 1
 
                 try:
-                    # Scroll até o elemento
+                    # Scroll até o elemento de forma mais natural
                     driver.execute_script(
-                        "arguments[0].scrollIntoView({block:'center'});", thumb
+                        "arguments[0].scrollIntoView({block:'center', behavior:'smooth'});", 
+                        thumb
                     )
-                    time.sleep(random.uniform(0.8, 1.2))
-                    
-                    # Clique via JavaScript (evita interceptação)
+                    time.sleep(random.uniform(1.2, 2.0) + extra_delay_s)
+
+                    # Movimento de mouse mais natural
+                    human_mouse_movement(driver, thumb)
+                    time.sleep(random.uniform(0.4, 1.0) + extra_delay_s)
+
+                    # Clique
                     driver.execute_script("arguments[0].click();", thumb)
                     on_log(f"[CLICK] Thumbnail {thumb_idx}/{len(valid_thumbs)}")
-                    time.sleep(random.uniform(3, 4))
+                    
+                    # Espera mais longa após o clique
+                    click_wait = random.uniform(4.5, 6.5) + extra_delay_s
+                    time.sleep(click_wait)
 
                     keep_main_tab()
 
@@ -261,7 +395,15 @@ def download_google_images(
                             continue
 
                         try:
-                            r = requests.get(src, timeout=15)
+                            # Headers mais completos na requisição
+                            headers = {
+                                'User-Agent': ua,
+                                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                                'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                                'Referer': 'https://www.google.com/',
+                            }
+                            
+                            r = requests.get(src, timeout=20, headers=headers)
                             content_type = (r.headers.get("Content-Type") or "").lower()
                             ext = normalize_ext(src.split(".")[-1].split("?")[0])
 
@@ -310,7 +452,6 @@ def download_google_images(
                             filename = build_filename(term_idx, img_idx, term, target_ext)
                             path = os.path.join(final_dir, filename)
 
-                            # Não sobrescrever se já existe
                             if os.path.exists(path):
                                 on_log(f"[SKIP] {filename} já existe")
                                 success = True
@@ -320,19 +461,32 @@ def download_google_images(
                                 f.write(image_bytes)
                             success = True
                             on_log(f"[OK] {filename}")
+                            
+                            # Pausa após download bem-sucedido
+                            time.sleep(random.uniform(2.5, 4.5) + extra_delay_s)
                             break
+                            
                         except Exception as e:
                             on_log(f"[ERRO] Falha ao baixar: {e}")
+                            time.sleep(random.uniform(1.0, 2.0))
 
-                    # Fecha painel lateral (ESC)
+                    # Fecha painel lateral
                     try:
                         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-                        time.sleep(1)
+                        time.sleep(random.uniform(1.0, 1.8) + extra_delay_s)
                     except:
                         pass
 
                     if success:
+                        total_downloaded += 1
                         img_idx += 1
+                        consecutive_failures = 0  # Reset contador
+
+                        # Cooldown mais frequente e mais longo
+                        if cooldown_every > 0 and total_downloaded % cooldown_every == 0:
+                            cooldown = random.uniform(cooldown_min_s, cooldown_max_s) + extra_delay_s
+                            on_log(f"[PAUSA] Cooldown de {cooldown:.1f}s após {total_downloaded} downloads")
+                            time.sleep(cooldown)
                         
                         # Salva estado
                         with open(state_path, "w", encoding="utf-8") as f:
@@ -354,12 +508,20 @@ def download_google_images(
                             images_per_term,
                             term,
                         )
+                    else:
+                        consecutive_failures += 1
+                        # Se falhar muito seguido, faz uma pausa mais longa
+                        if consecutive_failures >= 3:
+                            on_log("[AVISO] Múltiplas falhas consecutivas, fazendo pausa longa...")
+                            time.sleep(random.uniform(15.0, 25.0))
+                            consecutive_failures = 0
 
                 except Exception as e:
                     on_log(f"[ERRO] Exceção ao processar thumbnail: {e}")
                     keep_main_tab()
+                    time.sleep(random.uniform(2.0, 4.0))
 
-            start_img_idx = 1  # reset for next term
+            start_img_idx = 1
 
     finally:
         driver.quit()

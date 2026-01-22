@@ -29,6 +29,7 @@ class ClipSpec:
     width: int
     height: int
     layout: str
+    stickman_position: str = "left"
     images: List[ImageLayer] = field(default_factory=list)
     stickman: Optional[StickmanLayer] = None
     text: Optional[str] = None
