@@ -371,12 +371,40 @@ def build_timeline(
         return parent_links
 
     parent_links = _build_parent_links()
+    child_layout_overrides: Dict[int, str] = {}
+    child_effective_images: Dict[int, List[Dict[str, Any]]] = {}
+    child_has_images: Dict[int, bool] = {}
+    child_text_anchor_slot: Dict[int, Optional[int]] = {}
+    for parent_index, children in parent_links.items():
+        parent_item = guide[parent_index]
+        parent_mode = _normalize_mode(parent_item.get("mode", "image-only"))
+        parent_layout = parent_item.get("layout", "legacy_single")
+        parent_base_images = _collect_item_images(parent_item, parent_mode)
+        layout_norm = _normalize_layout(parent_layout)
+        required = 2 if layout_norm == "two_images_center" else 3
+        cumulative_children: List[Dict[str, Any]] = []
+        for child_index in children:
+            child_item = guide[child_index]
+            child_mode = _normalize_mode(child_item.get("mode", "image-only"))
+            child_images = _collect_item_images(child_item, child_mode)
+            child_has_images[child_index] = bool(child_images)
+            child_slot_start = len(parent_base_images) + len(cumulative_children)
+            cumulative_children.extend(child_images)
+            combined = parent_base_images + cumulative_children
+            child_effective_images[child_index] = combined[:required]
+            child_layout_overrides[child_index] = parent_layout
+            if child_images:
+                child_text_anchor_slot[child_index] = min(child_slot_start, required - 1)
+            else:
+                child_text_anchor_slot[child_index] = None
 
     for idx, item in enumerate(guide):
         trigger = norm(item["trigger"])
 
         mode = _normalize_mode(item.get("mode", "image-only"))
         layout_name = item.get("layout", "legacy_single")
+        if idx in child_layout_overrides:
+            layout_name = child_layout_overrides[idx]
         layout_norm = _normalize_layout(layout_name)
 
         matched_sub = None
@@ -390,27 +418,18 @@ def build_timeline(
             continue
 
         images: List[Dict[str, Any]] = _collect_item_images(item, mode)
-        if idx in parent_links:
-            required = 2 if layout_norm == "two_images_center" else 3
-            remaining = required - len(images)
-            for child_index in parent_links[idx]:
-                if remaining <= 0:
-                    break
-                child_item = guide[child_index]
-                child_mode = _normalize_mode(child_item.get("mode", "image-only"))
-                child_images = _collect_item_images(child_item, child_mode)
-                if not child_images:
-                    print_safe(
-                        f"[WARN] Item filho '{child_item.get('trigger', '')}' "
-                        "não possui imagem para compor layout múltiplo."
-                    )
-                    continue
-                images.extend(child_images[:remaining])
-                remaining = required - len(images)
+        if idx in child_effective_images:
+            images = child_effective_images[idx]
 
         if mode in ["image-only", "image-with-text"] and not images:
             print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
             continue
+        if idx in child_layout_overrides and mode in ["image-only", "image-with-text"]:
+            if not child_has_images.get(idx, True):
+                print_safe(
+                    f"[WARN] Item filho '{item.get('trigger', '')}' "
+                    "não possui imagem para compor layout múltiplo."
+                )
 
         stickman_cfg = None
         if use_stickman:
@@ -427,6 +446,7 @@ def build_timeline(
             "text": item.get("text"),
             "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
+            "text_anchor_slot": child_text_anchor_slot.get(idx),
             "mode": mode,
             "stickman_cfg": stickman_cfg,
             "layout": layout_name,
@@ -558,6 +578,7 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
             text=item["text"],
             text_anchor=item.get("text_anchor"),
             text_margin=item.get("text_margin"),
+            text_anchor_slot=item.get("text_anchor_slot"),
         )
 
         warnings = render_clip(clip_spec, out_clip)

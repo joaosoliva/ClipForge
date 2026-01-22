@@ -34,3 +34,4 @@ class ClipSpec:
     text: Optional[str] = None
     text_anchor: Optional[str] = None
     text_margin: Optional[int] = None
+    text_anchor_slot: Optional[int] = None
