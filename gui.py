@@ -1276,6 +1276,35 @@ class EditTab(tk.Frame):
         mode_value = (mode_value or "").strip().lower().replace("_", "-")
         return mode_value if mode_value in GUIDE_MODES else GUIDE_MODES[1]
 
+    def _normalize_layout(self, layout_value: str):
+        return (layout_value or "legacy_single").strip().lower()
+
+    def _get_child_trigger_indices(self):
+        child_indices = set()
+        i = 0
+        while i < len(self.guide_data):
+            item = self.guide_data[i]
+            mode = self._normalize_mode(item.get("mode", GUIDE_MODES[1]))
+            layout_norm = self._normalize_layout(item.get("layout", "legacy_single"))
+            if mode in ["image-only", "image-with-text"] and layout_norm in {
+                "two_images_center",
+                "stickman_left_3img",
+            }:
+                required = 2 if layout_norm == "two_images_center" else 3
+                image_count = len(self._get_item_image_ids(item))
+                needed = max(required - image_count, 0)
+                consumed = 0
+                for offset in range(1, needed + 1):
+                    child_index = i + offset
+                    if child_index >= len(self.guide_data):
+                        break
+                    child_indices.add(child_index)
+                    consumed += 1
+                i += 1 + consumed
+                continue
+            i += 1
+        return child_indices
+
     def _sync_mode_fields(self):
         mode = self.mode_combo.get()
         if mode == "text-only":
@@ -1334,9 +1363,20 @@ class EditTab(tk.Frame):
             self.image_id_entry.insert(0, self._format_image_ids(item))
 
             self.mode_combo.set(self._normalize_mode(item.get("mode", GUIDE_MODES[1])))
-            self.layout_combo.set(item.get("layout", "legacy_single"))
+            child_indices = self._get_child_trigger_indices()
+            is_child = idx in child_indices
+            layout_value = item.get("layout", "legacy_single")
+            if is_child and self._normalize_layout(layout_value) not in {
+                "legacy_single",
+                "image_center_only",
+            }:
+                layout_value = "legacy_single"
+            self.layout_combo.set(layout_value)
             self.mode_combo.config(state="readonly")
-            self.layout_combo.config(state="readonly")
+            if is_child:
+                self.layout_combo.config(state="disabled")
+            else:
+                self.layout_combo.config(state="readonly")
             self.stickman_anim_combo.config(state="readonly")
             self.stickman_anim_dir_combo.config(state="readonly")
 
@@ -1519,6 +1559,12 @@ class EditTab(tk.Frame):
         self.guide_data[idx]["mode"] = mode
 
         layout = self.layout_combo.get() or "legacy_single"
+        child_indices = self._get_child_trigger_indices()
+        if idx in child_indices and self._normalize_layout(layout) not in {
+            "legacy_single",
+            "image_center_only",
+        }:
+            layout = "legacy_single"
         self.guide_data[idx]["layout"] = layout
 
         image_ids = self._parse_image_ids_entry(self.image_id_entry.get())
