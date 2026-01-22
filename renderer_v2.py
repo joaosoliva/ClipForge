@@ -159,7 +159,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     text_anchor_slot = spec.text_anchor_slot if spec.text_anchor_slot is not None else 0
     if spec.text_margin is None:
         if text_anchor == "bottom":
-            text_margin = 0
+            text_margin = TEXT_IMAGE_MARGIN
         else:
             text_margin = TEXT_IMAGE_MARGIN
     else:
@@ -234,7 +234,10 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             if text_anchor == "top":
                 text_y = f"{base_final_y_expr}-text_h-{text_margin}"
             else:
-                text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
+                if spec.text_margin is None:
+                    text_y = f"min({base_final_y_expr}+{scaled_h}+{TEXT_IMAGE_MARGIN},H-text_h-{TEXT_IMAGE_MARGIN})"
+                else:
+                    text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
             if image.slide_direction:
                 text_x, text_y = _apply_slide_text(text_x, text_y, image.slide_direction, spec.fps)
             if text_anchor == "bottom":
