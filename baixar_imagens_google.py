@@ -250,12 +250,9 @@ def download_google_images(
     opts.add_argument("--no-default-browser-check")
     opts.add_argument("--lang=pt-BR,pt")
     opts.add_argument("--disable-dev-shm-usage")
-    
-    # Headers adicionais para parecer mais legítimo
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option('useAutomationExtension', False)
 
-    driver = uc.Chrome(options=opts, version_main=143)
+    # undetected_chromedriver já cuida dessas opções automaticamente
+    driver = uc.Chrome(options=opts, version_main=143, use_subprocess=True)
     add_stealth_overrides(driver, platform, languages)
 
     # Adiciona cookies/comportamento inicial mais natural
