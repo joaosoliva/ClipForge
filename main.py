@@ -389,14 +389,30 @@ def build_timeline(
             child_images = _collect_item_images(child_item, child_mode)
             child_has_images[child_index] = bool(child_images)
             child_slot_start = len(parent_base_images) + len(cumulative_children)
-            cumulative_children.extend(child_images)
-            combined = parent_base_images + cumulative_children
+            static_base = [
+                {
+                    **image,
+                    "zoom_enabled": False,
+                    "slide_direction": None,
+                }
+                for image in parent_base_images
+            ]
+            static_previous = [
+                {
+                    **image,
+                    "zoom_enabled": False,
+                    "slide_direction": None,
+                }
+                for image in cumulative_children
+            ]
+            combined = static_base + static_previous + child_images
             child_effective_images[child_index] = combined[:required]
             child_layout_overrides[child_index] = parent_layout
             if child_images:
                 child_text_anchor_slot[child_index] = min(child_slot_start, required - 1)
             else:
                 child_text_anchor_slot[child_index] = None
+            cumulative_children.extend(child_images)
 
     for idx, item in enumerate(guide):
         trigger = norm(item["trigger"])

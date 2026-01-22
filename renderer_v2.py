@@ -158,7 +158,10 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     text_anchor = (spec.text_anchor or "").strip().lower()
     text_anchor_slot = spec.text_anchor_slot if spec.text_anchor_slot is not None else 0
     if spec.text_margin is None:
-        text_margin = TEXT_IMAGE_MARGIN
+        if text_anchor == "bottom":
+            text_margin = max(4, TEXT_IMAGE_MARGIN // 2)
+        else:
+            text_margin = TEXT_IMAGE_MARGIN
     else:
         try:
             text_margin = int(spec.text_margin)
