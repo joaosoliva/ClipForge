@@ -811,12 +811,6 @@ class EditTab(tk.Frame):
         self.layout_combo = ttk.Combobox(edit_frame, values=LAYOUT_OPTIONS, state="readonly", width=18)
         self.layout_combo.place(x=310, y=270)
         self.layout_combo.set("legacy_single")
-        tk.Label(edit_frame, text="Stickman:", bg="#c0c0c0").place(x=520, y=270)
-        self.stickman_position_combo = ttk.Combobox(
-            edit_frame, values=STICKMAN_POSITION_OPTIONS, state="readonly", width=8
-        )
-        self.stickman_position_combo.place(x=590, y=270)
-        self.stickman_position_combo.set("left")
         tk.Label(
             edit_frame,
             text="Define como imagens/texto aparecem.",
@@ -850,6 +844,12 @@ class EditTab(tk.Frame):
             edit_frame, values=STICKMAN_ANIM_DIRECTIONS, state="readonly", width=8
         )
         self.stickman_anim_dir_combo.place(x=310, y=345)
+        tk.Label(edit_frame, text="Posição:", bg="#c0c0c0").place(x=400, y=345)
+        self.stickman_position_combo = ttk.Combobox(
+            edit_frame, values=STICKMAN_POSITION_OPTIONS, state="readonly", width=8
+        )
+        self.stickman_position_combo.place(x=460, y=345)
+        self.stickman_position_combo.set("left")
 
         # Effects
         tk.Label(edit_frame, text="Efeitos:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=375)
@@ -1303,9 +1303,10 @@ class EditTab(tk.Frame):
             trigger = item.get("trigger", "")
             mode = self._normalize_mode(item.get("mode", "image-only"))
             layout = item.get("layout", "legacy_single")
+            stickman_position = item.get("stickman_position", "left")
             image_label = self._format_image_ids(item)
             self.trigger_listbox.insert(
-                tk.END, f"{i+1}. {trigger} | {mode} | {layout} → {image_label}"
+                tk.END, f"{i+1}. {trigger} | {mode} | {layout} | {stickman_position} → {image_label}"
             )
         if yview is not None:
             self.trigger_listbox.yview_moveto(yview[0])
