@@ -167,7 +167,10 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     anchored_text_exprs = None
 
     layout, layout_warnings = resolve_layout(
-        spec.layout, use_stickman=spec.stickman is not None, image_count=len(spec.images)
+        spec.layout,
+        use_stickman=spec.stickman is not None,
+        image_count=len(spec.images),
+        stickman_side=spec.stickman_position,
     )
     warnings.extend(layout_warnings)
 
