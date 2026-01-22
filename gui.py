@@ -26,6 +26,7 @@ LAYOUT_OPTIONS = [
 ]
 STICKMAN_ANIM_OPTIONS = ["", "walk_to_final", "pop_to_final", "slide_to_final"]
 STICKMAN_ANIM_DIRECTIONS = ["left", "right"]
+STICKMAN_POSITION_OPTIONS = ["left", "right"]
 
 PROG_RE = re.compile(r"^\[(\d+)/(\d+)\s*\|\s*(\d+)%\]")
 
@@ -217,7 +218,6 @@ class RenderTab(tk.Frame):
             bg="#c0c0c0",
             activebackground="#c0c0c0",
         ).place(x=350, y=45)
-
         tk.Checkbutton(
             frm,
             text="Converter PNG para JPG (batches)",
@@ -839,14 +839,20 @@ class EditTab(tk.Frame):
         self.stickman_anim_combo.place(x=170, y=345)
         self.stickman_anim_combo.set("")
 
-        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=250, y=345)
+        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=10, y=370)
         self.stickman_anim_dir_combo = ttk.Combobox(
             edit_frame, values=STICKMAN_ANIM_DIRECTIONS, state="readonly", width=8
         )
-        self.stickman_anim_dir_combo.place(x=310, y=345)
+        self.stickman_anim_dir_combo.place(x=70, y=370)
+        tk.Label(edit_frame, text="Posição:", bg="#c0c0c0").place(x=170, y=370)
+        self.stickman_position_combo = ttk.Combobox(
+            edit_frame, values=STICKMAN_POSITION_OPTIONS, state="readonly", width=8
+        )
+        self.stickman_position_combo.place(x=230, y=370)
+        self.stickman_position_combo.set("left")
 
         # Effects
-        tk.Label(edit_frame, text="Efeitos:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=375)
+        tk.Label(edit_frame, text="Efeitos:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=395)
 
         # Zoom
         self.zoom_var = tk.BooleanVar()
@@ -856,10 +862,10 @@ class EditTab(tk.Frame):
             variable=self.zoom_var,
             bg="#c0c0c0",
             command=self._schedule_auto_save,
-        ).place(x=10, y=400)
+        ).place(x=10, y=420)
 
         # Slide
-        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=425)
+        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=445)
         self.slide_var = tk.StringVar(value="none")
         slide_options = ["none", "left", "right", "up", "down"]
 
@@ -871,7 +877,7 @@ class EditTab(tk.Frame):
                 value=opt,
                 bg="#c0c0c0",
                 command=self._schedule_auto_save,
-            ).place(x=10 + (i * 70), y=450)
+            ).place(x=10 + (i * 70), y=470)
 
         # Botões de ação
         tk.Button(
@@ -879,10 +885,10 @@ class EditTab(tk.Frame):
             text="Salvar item",
             width=20,
             command=lambda: self._apply_changes(autosave=True),
-        ).place(x=10, y=520)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=520)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=555)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=555)
+        ).place(x=10, y=540)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=540)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=575)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=575)
 
         self._bind_autosave_events()
 
@@ -902,6 +908,7 @@ class EditTab(tk.Frame):
             self.text_anchor_combo,
             self.stickman_anim_combo,
             self.stickman_anim_dir_combo,
+            self.stickman_position_combo,
         ]
         for widget in combo_widgets:
             widget.bind("<<ComboboxSelected>>", self._schedule_auto_save)
@@ -1296,9 +1303,10 @@ class EditTab(tk.Frame):
             trigger = item.get("trigger", "")
             mode = self._normalize_mode(item.get("mode", "image-only"))
             layout = item.get("layout", "legacy_single")
+            stickman_position = item.get("stickman_position", "left")
             image_label = self._format_image_ids(item)
             self.trigger_listbox.insert(
-                tk.END, f"{i+1}. {trigger} | {mode} | {layout} → {image_label}"
+                tk.END, f"{i+1}. {trigger} | {mode} | {layout} | {stickman_position} → {image_label}"
             )
         if yview is not None:
             self.trigger_listbox.yview_moveto(yview[0])
@@ -1335,8 +1343,10 @@ class EditTab(tk.Frame):
 
             self.mode_combo.set(self._normalize_mode(item.get("mode", GUIDE_MODES[1])))
             self.layout_combo.set(item.get("layout", "legacy_single"))
+            self.stickman_position_combo.set(item.get("stickman_position", "left"))
             self.mode_combo.config(state="readonly")
             self.layout_combo.config(state="readonly")
+            self.stickman_position_combo.config(state="readonly")
             self.stickman_anim_combo.config(state="readonly")
             self.stickman_anim_dir_combo.config(state="readonly")
 
@@ -1384,10 +1394,12 @@ class EditTab(tk.Frame):
 
             self.mode_combo.set(GUIDE_MODES[1])
             self.layout_combo.set("legacy_single")
+            self.stickman_position_combo.set("left")
             self.stickman_anim_combo.set("")
             self.stickman_anim_dir_combo.set("")
             self.mode_combo.config(state="disabled")
             self.layout_combo.config(state="disabled")
+            self.stickman_position_combo.config(state="disabled")
             self.stickman_anim_combo.config(state="disabled")
             self.stickman_anim_dir_combo.config(state="disabled")
 
@@ -1430,6 +1442,7 @@ class EditTab(tk.Frame):
             self.after(100, lambda: self.text_margin_entry.config(state="normal"))
             self.after(100, lambda: self.mode_combo.config(state="readonly"))
             self.after(100, lambda: self.layout_combo.config(state="readonly"))
+            self.after(100, lambda: self.stickman_position_combo.config(state="readonly"))
             self.after(100, lambda: self.stickman_anim_combo.config(state="readonly"))
             self.after(100, lambda: self.stickman_anim_dir_combo.config(state="readonly"))
             self._last_selected_index = None
@@ -1520,6 +1533,12 @@ class EditTab(tk.Frame):
 
         layout = self.layout_combo.get() or "legacy_single"
         self.guide_data[idx]["layout"] = layout
+
+        stickman_position = (self.stickman_position_combo.get() or "").strip().lower()
+        if stickman_position in STICKMAN_POSITION_OPTIONS:
+            self.guide_data[idx]["stickman_position"] = stickman_position
+        else:
+            self.guide_data[idx].pop("stickman_position", None)
 
         image_ids = self._parse_image_ids_entry(self.image_id_entry.get())
         if mode == "text-only":
@@ -1705,6 +1724,7 @@ class EditTab(tk.Frame):
             "trigger": "novo trigger",
             "mode": "image-only",
             "layout": "legacy_single",
+            "stickman_position": "left",
             "image_id": "01"
         }
 
