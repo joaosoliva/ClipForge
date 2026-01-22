@@ -294,33 +294,135 @@ def build_timeline(
 ) -> List[Dict[str, Any]]:
     timeline = []
 
-    for item in guide:
+    def _normalize_mode(mode_value: str) -> str:
+        mode_value = (mode_value or "image-only").lower().replace("_", "-")
+        return mode_value
+
+    def _normalize_layout(layout_value: str) -> str:
+        return (layout_value or "legacy_single").strip().lower()
+
+    def _get_item_image_ids(item: Dict[str, Any]) -> List[str]:
+        image_ids = item.get("image_ids")
+        if isinstance(image_ids, list) and image_ids:
+            return [str(i).strip() for i in image_ids if str(i).strip()]
+        image_id = str(item.get("image_id", "")).strip()
+        return [image_id] if image_id else []
+
+    def _collect_item_images(item: Dict[str, Any], mode: str) -> List[Dict[str, Any]]:
+        if mode not in ["image-only", "image-with-text"]:
+            return []
+
+        image_ids = _get_item_image_ids(item)
+        if not image_ids:
+            return []
+
+        effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
+        zoom_enabled = False if disable_zoom else effects.get("zoom", False)
+        slide_direction = effects.get("slide")
+
+        images: List[Dict[str, Any]] = []
+        for image_id in image_ids:
+            image = find_image_by_id(images_dir, image_id)
+            if not image:
+                print_safe(f"[WARN] Image ID '{image_id}' não encontrada")
+                continue
+            images.append({
+                "path": image,
+                "zoom_enabled": zoom_enabled,
+                "slide_direction": slide_direction,
+            })
+
+        return images
+
+    def _build_parent_links():
+        parent_links: Dict[int, List[int]] = {}
+        i = 0
+        while i < len(guide):
+            item = guide[i]
+            mode = _normalize_mode(item.get("mode", "image-only"))
+            layout_norm = _normalize_layout(item.get("layout", "legacy_single"))
+            if mode in ["image-only", "image-with-text"] and layout_norm in {
+                "two_images_center",
+                "stickman_left_3img",
+            }:
+                required = 2 if layout_norm == "two_images_center" else 3
+                image_count = len(_get_item_image_ids(item))
+                needed = max(required - image_count, 0)
+                children: List[int] = []
+                for offset in range(1, needed + 1):
+                    child_index = i + offset
+                    if child_index >= len(guide):
+                        break
+                    child_item = guide[child_index]
+                    child_layout_norm = _normalize_layout(child_item.get("layout", "legacy_single"))
+                    if child_layout_norm not in {"legacy_single", "image_center_only"}:
+                        print_safe(
+                            "[WARN] Layout complexo não permitido como filho "
+                            f"em '{child_item.get('trigger', '')}'. "
+                            "Use legacy_single ou image_center_only."
+                        )
+                        break
+                    children.append(child_index)
+                if children:
+                    parent_links[i] = children
+                i += 1 + len(children)
+                continue
+            i += 1
+        return parent_links
+
+    parent_links = _build_parent_links()
+    child_layout_overrides: Dict[int, str] = {}
+    child_effective_images: Dict[int, List[Dict[str, Any]]] = {}
+    child_has_images: Dict[int, bool] = {}
+    child_text_anchor_slot: Dict[int, Optional[int]] = {}
+    for parent_index, children in parent_links.items():
+        parent_item = guide[parent_index]
+        parent_mode = _normalize_mode(parent_item.get("mode", "image-only"))
+        parent_layout = parent_item.get("layout", "legacy_single")
+        parent_base_images = _collect_item_images(parent_item, parent_mode)
+        layout_norm = _normalize_layout(parent_layout)
+        required = 2 if layout_norm == "two_images_center" else 3
+        cumulative_children: List[Dict[str, Any]] = []
+        for child_index in children:
+            child_item = guide[child_index]
+            child_mode = _normalize_mode(child_item.get("mode", "image-only"))
+            child_images = _collect_item_images(child_item, child_mode)
+            child_has_images[child_index] = bool(child_images)
+            child_slot_start = len(parent_base_images) + len(cumulative_children)
+            static_base = [
+                {
+                    **image,
+                    "zoom_enabled": False,
+                    "slide_direction": None,
+                }
+                for image in parent_base_images
+            ]
+            static_previous = [
+                {
+                    **image,
+                    "zoom_enabled": False,
+                    "slide_direction": None,
+                }
+                for image in cumulative_children
+            ]
+            combined = static_base + static_previous + child_images
+            child_effective_images[child_index] = combined[:required]
+            child_layout_overrides[child_index] = parent_layout
+            if child_images:
+                child_text_anchor_slot[child_index] = min(child_slot_start, required - 1)
+            else:
+                child_text_anchor_slot[child_index] = None
+            cumulative_children.extend(child_images)
+
+    for idx, item in enumerate(guide):
         trigger = norm(item["trigger"])
-        
-        # Mode: "text-only", "image-only" (default), "image-with-text"
-        mode = item.get("mode", "image-only").lower()
-        mode = mode.replace("_", "-")
-        
-        # Validação de imagem baseada no mode
-        images: List[str] = []
-        if mode in ["image-only", "image-with-text"]:
-            image_ids = item.get("image_ids")
-            if image_ids is None:
-                image_id = item.get("image_id")
-                image_ids = [image_id] if image_id else []
-            if not image_ids:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
-                continue
-            for image_id in image_ids:
-                image = find_image_by_id(images_dir, image_id)
-                if not image:
-                    print_safe(f"[WARN] Image ID '{image_id}' não encontrada")
-                    continue
-                images.append(image)
-            if not images:
-                print_safe(f"[WARN] Mode '{mode}' requer imagem, mas nenhuma foi encontrada")
-                continue
-        
+
+        mode = _normalize_mode(item.get("mode", "image-only"))
+        layout_name = item.get("layout", "legacy_single")
+        if idx in child_layout_overrides:
+            layout_name = child_layout_overrides[idx]
+        layout_norm = _normalize_layout(layout_name)
+
         matched_sub = None
         for sub in subs:
             if trigger_in_text(trigger, sub.text):
@@ -330,6 +432,20 @@ def build_timeline(
         if not matched_sub:
             print_safe(f"[WARN] Trigger '{trigger}' não encontrado no SRT efetivo")
             continue
+
+        images: List[Dict[str, Any]] = _collect_item_images(item, mode)
+        if idx in child_effective_images:
+            images = child_effective_images[idx]
+
+        if mode in ["image-only", "image-with-text"] and not images:
+            print_safe(f"[WARN] Mode '{mode}' requer imagem, mas não há image_id(s)")
+            continue
+        if idx in child_layout_overrides and mode in ["image-only", "image-with-text"]:
+            if not child_has_images.get(idx, True):
+                print_safe(
+                    f"[WARN] Item filho '{item.get('trigger', '')}' "
+                    "não possui imagem para compor layout múltiplo."
+                )
 
         stickman_cfg = None
         if use_stickman:
@@ -346,11 +462,10 @@ def build_timeline(
             "text": item.get("text"),
             "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
+            "text_anchor_slot": child_text_anchor_slot.get(idx),
             "mode": mode,
-            "zoom_enabled": (False if disable_zoom else item.get("effects", {}).get("zoom", False)),
-            "slide_direction": item.get("effects", {}).get("slide"),
             "stickman_cfg": stickman_cfg,
-            "layout": item.get("layout", "legacy_single"),
+            "layout": layout_name,
             "stickman_anim": item.get("stickman_anim"),
             "stickman_position": item.get("stickman_position"),
         })
@@ -434,11 +549,11 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
 
         images = [
             ImageLayer(
-                path=image_path,
-                zoom_enabled=item["zoom_enabled"],
-                slide_direction=item["slide_direction"],
+                path=image["path"],
+                zoom_enabled=image.get("zoom_enabled", False),
+                slide_direction=image.get("slide_direction"),
             )
-            for image_path in item["images"]
+            for image in item["images"]
         ]
 
         stickman_layer = None
@@ -485,6 +600,7 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
             text=item["text"],
             text_anchor=item.get("text_anchor"),
             text_margin=item.get("text_margin"),
+            text_anchor_slot=item.get("text_anchor_slot"),
         )
 
         warnings = render_clip(clip_spec, out_clip)

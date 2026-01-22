@@ -156,6 +156,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     warnings: List[str] = []
     total_frames = max(1, int(math.ceil(spec.duration * spec.fps)))
     text_anchor = (spec.text_anchor or "").strip().lower()
+    text_anchor_slot = spec.text_anchor_slot if spec.text_anchor_slot is not None else 0
     if spec.text_margin is None:
         text_margin = TEXT_IMAGE_MARGIN
     else:
@@ -223,7 +224,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
         if image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
-        if spec.text and idx == 0 and text_anchor in {"top", "bottom"}:
+        if spec.text and idx == text_anchor_slot and text_anchor in {"top", "bottom"}:
             scaled_w, scaled_h = _scaled_image_size(
                 image.path, slot.target_w, slot.target_h, image.zoom_enabled
             )
@@ -234,6 +235,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
                 text_y = f"{base_final_y_expr}-text_h-{text_margin}"
             else:
                 text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
+                text_y = f"min({text_y},H-text_h-{TEXT_IMAGE_MARGIN})"
             if image.slide_direction:
                 text_x, text_y = _apply_slide_text(text_x, text_y, image.slide_direction, spec.fps)
             anchored_text_exprs = (text_x, text_y)
