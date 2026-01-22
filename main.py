@@ -352,6 +352,7 @@ def build_timeline(
             "stickman_cfg": stickman_cfg,
             "layout": item.get("layout", "legacy_single"),
             "stickman_anim": item.get("stickman_anim"),
+            "stickman_position": item.get("stickman_position"),
         })
 
     timeline.sort(key=lambda x: x["start"])
@@ -441,11 +442,12 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
         ]
 
         stickman_layer = None
+        stickman_position = item.get("stickman_position") or stickman_side
         layout_result, layout_warnings = resolve_layout(
             item["layout"],
             use_stickman=use_stickman,
             image_count=len(item["images"]),
-            stickman_side=stickman_side,
+            stickman_side=stickman_position,
         )
         for warning in layout_warnings:
             print_safe(f"[WARN] {warning}")
@@ -477,7 +479,7 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
             width=OUT_W,
             height=OUT_H,
             layout=item["layout"],
-            stickman_position=stickman_side,
+            stickman_position=stickman_position,
             images=images,
             stickman=stickman_layer,
             text=item["text"],
