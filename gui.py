@@ -199,6 +199,7 @@ class RenderTab(tk.Frame):
         self.status = tk.StringVar(value="Pronto.")
         self.is_running = False
         self.use_stickman = tk.BooleanVar(value=True)
+        self.stickman_right = tk.BooleanVar(value=False)
         self.convert_png_to_jpg = tk.BooleanVar(value=False)
         self.output_dir = tk.StringVar(value="output")
 
@@ -217,6 +218,13 @@ class RenderTab(tk.Frame):
             bg="#c0c0c0",
             activebackground="#c0c0c0",
         ).place(x=350, y=45)
+        tk.Checkbutton(
+            frm,
+            text="Stickman à direita",
+            variable=self.stickman_right,
+            bg="#c0c0c0",
+            activebackground="#c0c0c0",
+        ).place(x=520, y=45)
 
         tk.Checkbutton(
             frm,
@@ -461,6 +469,8 @@ class RenderTab(tk.Frame):
                 cmd += ["--job", job]
             if not self.use_stickman.get():
                 cmd += ["--no-stickman"]
+            if self.stickman_right.get():
+                cmd += ["--stickman-position", "right"]
             if self.convert_png_to_jpg.get():
                 cmd += ["--convert-png-to-jpg"]
 

@@ -398,7 +398,7 @@ def concat_job_clips(paths: JobPaths, clip_paths: List[str], output_video_path: 
 # PROCESS
 # =============================================================================
 
-def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
+def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickman_side: str):
     print_safe(f"\n>> Processando job {paths.job_id}")
     print_safe(f"   Root:  {paths.base}")
     print_safe(f"   Audio: {paths.audio}")
@@ -442,7 +442,10 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
 
         stickman_layer = None
         layout_result, layout_warnings = resolve_layout(
-            item["layout"], use_stickman=use_stickman, image_count=len(item["images"])
+            item["layout"],
+            use_stickman=use_stickman,
+            image_count=len(item["images"]),
+            stickman_side=stickman_side,
         )
         for warning in layout_warnings:
             print_safe(f"[WARN] {warning}")
@@ -474,6 +477,7 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool):
             width=OUT_W,
             height=OUT_H,
             layout=item["layout"],
+            stickman_position=stickman_side,
             images=images,
             stickman=stickman_layer,
             text=item["text"],
@@ -503,6 +507,12 @@ def main():
     parser.add_argument("--job", help="Renderiza apenas um job (ex: 01). Se omitido, renderiza todos.")
     parser.add_argument("--no-stickman", action="store_true",
                         help="Renderiza sem stickman (somente imagens centralizadas).")
+    parser.add_argument(
+        "--stickman-position",
+        choices=["left", "right"],
+        default="left",
+        help="Posição do stickman quando ativo (left/right).",
+    )
     parser.add_argument("--disable-zoom", action="store_true",
                         help="Desabilita o zoom de todas as triggers (útil para testes).")
     parser.add_argument("--convert-png-to-jpg", action="store_true",
@@ -510,6 +520,7 @@ def main():
     args = parser.parse_args()
 
     use_stickman = (not args.no_stickman)
+    stickman_side = args.stickman_position
 
     try:
         jobs = discover_jobs(args.root)
@@ -536,7 +547,12 @@ def main():
 
     for job_id in jobs:
         paths = build_job_paths(args.root, job_id, use_stickman=use_stickman, output_root=args.output)
-        process_job(paths, use_stickman=use_stickman, disable_zoom=args.disable_zoom)
+        process_job(
+            paths,
+            use_stickman=use_stickman,
+            disable_zoom=args.disable_zoom,
+            stickman_side=stickman_side,
+        )
 
 if __name__ == "__main__":
     main()
