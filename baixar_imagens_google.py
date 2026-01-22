@@ -99,13 +99,16 @@ def sleep_with_jitter(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
     time.sleep(random.uniform(min_s, max_s) + extra_s)
 
 
-def add_stealth_overrides(driver) -> None:
-    script = """
-    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-    Object.defineProperty(navigator, 'languages', {get: () => ['pt-BR', 'pt', 'en-US', 'en']});
-    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-    Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
-    window.chrome = { runtime: {} };
+def add_stealth_overrides(driver, platform: str, languages: list[str]) -> None:
+    langs_json = json.dumps(languages)
+    script = f"""
+    Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
+    Object.defineProperty(navigator, 'languages', {{get: () => {langs_json}}});
+    Object.defineProperty(navigator, 'plugins', {{get: () => [1, 2, 3, 4, 5]}});
+    Object.defineProperty(navigator, 'platform', {{get: () => '{platform}'}});
+    if (!window.chrome) {{
+        window.chrome = {{ runtime: {{}} }};
+    }}
     """
     driver.execute_cdp_cmd(
         "Page.addScriptToEvaluateOnNewDocument",
@@ -179,6 +182,15 @@ def download_google_images(
         "Mozilla/5.0 (X11; Linux x86_64)",
     ]
     ua = random.choice(user_agents)
+    if "Macintosh" in ua:
+        platform = "MacIntel"
+        languages = ["pt-BR", "pt", "en-US", "en"]
+    elif "Linux" in ua:
+        platform = "Linux x86_64"
+        languages = ["pt-BR", "pt", "en-US", "en"]
+    else:
+        platform = "Win32"
+        languages = ["pt-BR", "pt", "en-US", "en"]
 
     opts = Options()
     opts.add_argument(f"user-agent={ua}")
@@ -189,7 +201,7 @@ def download_google_images(
     opts.add_argument("--lang=pt-BR,pt")
 
     driver = uc.Chrome(options=opts, version_main=143)
-    add_stealth_overrides(driver)
+    add_stealth_overrides(driver, platform, languages)
 
     def keep_main_tab():
         if len(driver.window_handles) > 1:
