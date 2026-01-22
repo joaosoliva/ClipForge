@@ -231,15 +231,10 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             if text_anchor == "top":
                 text_y = f"{base_final_y_expr}-text_h-{text_margin}"
             else:
-                if spec.text_margin is None and layout.name in {"two_images_center", "stickman_left_3img"}:
-                    text_y = f"{base_final_y_expr}+{scaled_h}-({scaled_h}*0.45)"
-                else:
-                    text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
+                text_y = f"{base_final_y_expr}+{scaled_h}+{text_margin}"
                 text_y = f"min({text_y},H-text_h-{TEXT_IMAGE_MARGIN})"
             if image.slide_direction:
                 text_x, text_y = _apply_slide_text(text_x, text_y, image.slide_direction, spec.fps)
-            if text_anchor == "bottom":
-                text_y = f"min({text_y},H-text_h-{TEXT_IMAGE_MARGIN})"
             anchored_text_exprs = (text_x, text_y)
 
         filters.append(
