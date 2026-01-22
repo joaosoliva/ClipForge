@@ -839,20 +839,20 @@ class EditTab(tk.Frame):
         self.stickman_anim_combo.place(x=170, y=345)
         self.stickman_anim_combo.set("")
 
-        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=250, y=345)
+        tk.Label(edit_frame, text="Direção:", bg="#c0c0c0").place(x=10, y=370)
         self.stickman_anim_dir_combo = ttk.Combobox(
             edit_frame, values=STICKMAN_ANIM_DIRECTIONS, state="readonly", width=8
         )
-        self.stickman_anim_dir_combo.place(x=310, y=345)
-        tk.Label(edit_frame, text="Posição:", bg="#c0c0c0").place(x=400, y=345)
+        self.stickman_anim_dir_combo.place(x=70, y=370)
+        tk.Label(edit_frame, text="Posição:", bg="#c0c0c0").place(x=170, y=370)
         self.stickman_position_combo = ttk.Combobox(
             edit_frame, values=STICKMAN_POSITION_OPTIONS, state="readonly", width=8
         )
-        self.stickman_position_combo.place(x=460, y=345)
+        self.stickman_position_combo.place(x=230, y=370)
         self.stickman_position_combo.set("left")
 
         # Effects
-        tk.Label(edit_frame, text="Efeitos:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=375)
+        tk.Label(edit_frame, text="Efeitos:", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=395)
 
         # Zoom
         self.zoom_var = tk.BooleanVar()
@@ -862,10 +862,10 @@ class EditTab(tk.Frame):
             variable=self.zoom_var,
             bg="#c0c0c0",
             command=self._schedule_auto_save,
-        ).place(x=10, y=400)
+        ).place(x=10, y=420)
 
         # Slide
-        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=425)
+        tk.Label(edit_frame, text="Slide:", bg="#c0c0c0").place(x=10, y=445)
         self.slide_var = tk.StringVar(value="none")
         slide_options = ["none", "left", "right", "up", "down"]
 
@@ -877,7 +877,7 @@ class EditTab(tk.Frame):
                 value=opt,
                 bg="#c0c0c0",
                 command=self._schedule_auto_save,
-            ).place(x=10 + (i * 70), y=450)
+            ).place(x=10 + (i * 70), y=470)
 
         # Botões de ação
         tk.Button(
@@ -885,10 +885,10 @@ class EditTab(tk.Frame):
             text="Salvar item",
             width=20,
             command=lambda: self._apply_changes(autosave=True),
-        ).place(x=10, y=520)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=520)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=555)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=555)
+        ).place(x=10, y=540)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=540)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=575)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=575)
 
         self._bind_autosave_events()
 
