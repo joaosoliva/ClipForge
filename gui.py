@@ -2448,6 +2448,7 @@ class ImageDownloaderWindow(tk.Toplevel):
         # ---------------- Vars ----------------
         self.dest_path = tk.StringVar()
         self.images_per_term = tk.IntVar(value=3)
+        self.download_speed = tk.StringVar(value="lenta")
         self.extra_tag_wikipedia_cc = tk.BooleanVar(value=False)
         self.extra_tag_freepik = tk.BooleanVar(value=False)
 
@@ -2523,7 +2524,7 @@ class ImageDownloaderWindow(tk.Toplevel):
 
         # === CONFIGURAÇÕES GERAIS ===
         config_frame = tk.Frame(self, bg="#c0c0c0", bd=2, relief="groove")
-        config_frame.place(x=10, y=y, width=860, height=115)
+        config_frame.place(x=10, y=y, width=860, height=150)
 
         # Destino
         tk.Label(config_frame, text="Pasta destino:", bg="#c0c0c0").place(x=10, y=10)
@@ -2539,22 +2540,32 @@ class ImageDownloaderWindow(tk.Toplevel):
             width=6
         ).place(x=140, y=60)
 
+        tk.Label(config_frame, text="Velocidade:", bg="#c0c0c0").place(x=240, y=60)
+        speed_menu = ttk.Combobox(
+            config_frame,
+            textvariable=self.download_speed,
+            values=["lenta", "normal", "rápida"],
+            state="readonly",
+            width=12,
+        )
+        speed_menu.place(x=320, y=60)
+
         # Tags extras
-        tk.Label(config_frame, text="Tags extras:", bg="#c0c0c0").place(x=240, y=60)
+        tk.Label(config_frame, text="Tags extras:", bg="#c0c0c0").place(x=480, y=60)
         tk.Checkbutton(
             config_frame,
             text="Creative Commons (Wikipedia)",
             variable=self.extra_tag_wikipedia_cc,
             bg="#c0c0c0",
-        ).place(x=320, y=58)
+        ).place(x=560, y=58)
         tk.Checkbutton(
             config_frame,
             text="Freepik",
             variable=self.extra_tag_freepik,
             bg="#c0c0c0",
-        ).place(x=560, y=58)
+        ).place(x=560, y=82)
 
-        y += 125
+        y += 160
 
         # === PROGRESSO ===
         tk.Label(self, text="Progresso do arquivo atual:", bg="#c0c0c0").place(x=10, y=y)
@@ -2850,6 +2861,7 @@ class ImageDownloaderWindow(tk.Toplevel):
                     manual_topic=topic_name,  # Força uso do tópico personalizado
                     extra_query_tags=extra_tags,
                     resume=resume,
+                    speed=self.download_speed.get(),
                     on_log=lambda s: self.after(0, self._log, s),
                     on_progress=on_progress,
                     stop_flag=self._stop_flag,
