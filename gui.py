@@ -2433,7 +2433,7 @@ class ImageDownloaderWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Downloader de Imagens")
-        self.geometry("900x780")
+        self.geometry("900x840")
         self.configure(bg="#c0c0c0")
         self.resizable(False, False)
         self.transient(parent)
@@ -2565,7 +2565,7 @@ class ImageDownloaderWindow(tk.Toplevel):
             bg="#c0c0c0",
         ).place(x=560, y=82)
 
-        y += 160
+        y += 150
 
         # === PROGRESSO ===
         tk.Label(self, text="Progresso do arquivo atual:", bg="#c0c0c0").place(x=10, y=y)
@@ -2586,8 +2586,8 @@ class ImageDownloaderWindow(tk.Toplevel):
         # === LOG ===
         tk.Label(self, text="Log:", bg="#c0c0c0").place(x=10, y=y)
         self.log = tk.Text(self, bg="black", fg="#00ff00", height=8, state="disabled")
-        self.log.place(x=10, y=y+22, width=860, height=140)
-        y += 170
+        self.log.place(x=10, y=y+22, width=860, height=120)
+        y += 150
 
         # === BOTÕES DE CONTROLE ===
         self.btn_start = tk.Button(self, text="▶️ Start", width=15, command=self._start)
