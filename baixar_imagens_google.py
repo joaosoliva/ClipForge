@@ -100,12 +100,13 @@ def sleep_with_jitter(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
     time.sleep(random.uniform(min_s, max_s) + extra_s)
 
 
-def human_like_delay() -> float:
+def human_like_delay(multiplier: float = 1.0) -> float:
     """Gera delays mais naturais com distribuição similar ao comportamento humano"""
     # Usa distribuição exponencial para simular tempos de reação humanos
     base = random.expovariate(0.5)  # média ~2s
     jitter = random.uniform(-0.3, 0.8)
-    return max(0.8, min(base + jitter, 6.0))
+    scaled = (base + jitter) * multiplier
+    return max(0.4, min(scaled, 6.0))
 
 
 def add_stealth_overrides(driver, platform: str, languages: list[str]) -> None:
@@ -127,7 +128,7 @@ def add_stealth_overrides(driver, platform: str, languages: list[str]) -> None:
     )
 
 
-def human_scroll(driver, extra_delay_s: float = 0.0) -> None:
+def human_scroll(driver, extra_delay_s: float = 0.0, delay_multiplier: float = 1.0) -> None:
     """Scroll mais natural com pausas e variações"""
     scroll_count = random.randint(2, 4)
     for i in range(scroll_count):
@@ -143,12 +144,12 @@ def human_scroll(driver, extra_delay_s: float = 0.0) -> None:
         )
         
         # Pausas mais naturais entre scrolls
-        pause = human_like_delay()
+        pause = human_like_delay(delay_multiplier)
         time.sleep(pause + extra_delay_s)
         
         # Às vezes para por mais tempo (como se estivesse lendo)
         if random.random() < 0.3:
-            time.sleep(random.uniform(1.5, 3.5))
+            time.sleep(random.uniform(1.5, 3.5) * delay_multiplier)
 
 
 def human_mouse_movement(driver, element) -> None:
@@ -181,6 +182,7 @@ def download_google_images(
     extra_query_tags: list[str] | None = None,
     resume: bool = True,
     extra_delay_s: float = 0.0,
+    speed: str = "lenta",
     cooldown_every: int = 5,  # Reduzido de 8 para 5
     cooldown_min_s: float = 25.0,  # Aumentado de 18
     cooldown_max_s: float = 45.0,  # Aumentado de 30
@@ -211,12 +213,37 @@ def download_google_images(
     start_term_idx = 0
     start_img_idx = 1
 
+    speed_key = (speed or "lenta").strip().lower().replace("á", "a")
+    speed_profiles = {
+        "lenta": {"multiplier": 1.0},
+        "normal": {"multiplier": 0.7},
+        "rapida": {"multiplier": 0.5},
+    }
+    if speed_key not in speed_profiles:
+        on_log(f"[AVISO] Velocidade inválida '{speed}'. Usando 'lenta'.")
+        speed_key = "lenta"
+
+    delay_multiplier = speed_profiles[speed_key]["multiplier"]
+
+    def calc_delay(min_s: float, max_s: float, extra_s: float = 0.0) -> float:
+        return random.uniform(min_s, max_s) * delay_multiplier + extra_s
+
+    def calc_fixed(seconds: float, extra_s: float = 0.0) -> float:
+        return seconds * delay_multiplier + extra_s
+
+    def sleep_range(min_s: float, max_s: float, extra_s: float = 0.0) -> None:
+        time.sleep(calc_delay(min_s, max_s, extra_s))
+
+    def sleep_fixed(seconds: float, extra_s: float = 0.0) -> None:
+        time.sleep(calc_fixed(seconds, extra_s))
+
     if resume and os.path.exists(state_path):
         with open(state_path, "r", encoding="utf-8") as f:
             st = json.load(f)
             start_term_idx = st.get("term_index", 0)
             start_img_idx = st.get("img_index", 1)
         on_log(f"[RESUME] Retomando do termo {start_term_idx+1}, imagem {start_img_idx}")
+    on_log(f"[VELOCIDADE] {speed_key}")
 
     # -----------------------------------------------------
     # Chrome setup com mais headers realistas
@@ -267,7 +294,7 @@ def download_google_images(
             for h in driver.window_handles[1:]:
                 driver.switch_to.window(h)
                 driver.close()
-                time.sleep(0.4)  # Aumentado ligeiramente
+                sleep_fixed(0.4)  # Aumentado ligeiramente
             driver.switch_to.window(main)
 
     def get_valid_thumbnails():
@@ -301,7 +328,7 @@ def download_google_images(
         
         # Pausa inicial ao abrir o navegador
         on_log("[INICIALIZANDO] Aguardando para parecer mais natural...")
-        time.sleep(random.uniform(2.5, 4.5))
+        sleep_range(2.5, 4.5)
         
         for term_idx in range(start_term_idx, len(terms)):
             if stop_flag():
@@ -323,19 +350,19 @@ def download_google_images(
             
             # Pausa entre buscas (mais longa)
             if term_idx > start_term_idx:
-                pause_between_searches = random.uniform(8.0, 15.0) + extra_delay_s
+                pause_between_searches = calc_delay(8.0, 15.0, extra_delay_s)
                 on_log(f"[PAUSA] Aguardando {pause_between_searches:.1f}s antes da próxima busca...")
                 time.sleep(pause_between_searches)
             
             driver.get(url)
             
             # Espera mais longa após carregar a página
-            initial_load = random.uniform(6.0, 9.0) + extra_delay_s
+            initial_load = calc_delay(6.0, 9.0, extra_delay_s)
             time.sleep(initial_load)
             
             # Comportamento humano: às vezes rola a página antes de clicar
             if random.random() < 0.7:
-                human_scroll(driver, extra_delay_s)
+                human_scroll(driver, extra_delay_s, delay_multiplier)
 
             thumb_idx = 0
             img_idx = start_img_idx if term_idx == start_term_idx else 1
@@ -369,19 +396,18 @@ def download_google_images(
                         "arguments[0].scrollIntoView({block:'center', behavior:'smooth'});", 
                         thumb
                     )
-                    time.sleep(random.uniform(1.2, 2.0) + extra_delay_s)
+                    sleep_range(1.2, 2.0, extra_delay_s)
 
                     # Movimento de mouse mais natural
                     human_mouse_movement(driver, thumb)
-                    time.sleep(random.uniform(0.4, 1.0) + extra_delay_s)
+                    sleep_range(0.4, 1.0, extra_delay_s)
 
                     # Clique
                     driver.execute_script("arguments[0].click();", thumb)
                     on_log(f"[CLICK] Thumbnail {thumb_idx}/{len(valid_thumbs)}")
                     
                     # Espera mais longa após o clique
-                    click_wait = random.uniform(4.5, 6.5) + extra_delay_s
-                    time.sleep(click_wait)
+                    sleep_range(4.5, 6.5, extra_delay_s)
 
                     keep_main_tab()
 
@@ -463,17 +489,17 @@ def download_google_images(
                             on_log(f"[OK] {filename}")
                             
                             # Pausa após download bem-sucedido
-                            time.sleep(random.uniform(2.5, 4.5) + extra_delay_s)
+                            sleep_range(2.5, 4.5, extra_delay_s)
                             break
                             
                         except Exception as e:
                             on_log(f"[ERRO] Falha ao baixar: {e}")
-                            time.sleep(random.uniform(1.0, 2.0))
+                            sleep_range(1.0, 2.0)
 
                     # Fecha painel lateral
                     try:
                         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-                        time.sleep(random.uniform(1.0, 1.8) + extra_delay_s)
+                        sleep_range(1.0, 1.8, extra_delay_s)
                     except:
                         pass
 
@@ -484,7 +510,7 @@ def download_google_images(
 
                         # Cooldown mais frequente e mais longo
                         if cooldown_every > 0 and total_downloaded % cooldown_every == 0:
-                            cooldown = random.uniform(cooldown_min_s, cooldown_max_s) + extra_delay_s
+                            cooldown = calc_delay(cooldown_min_s, cooldown_max_s, extra_delay_s)
                             on_log(f"[PAUSA] Cooldown de {cooldown:.1f}s após {total_downloaded} downloads")
                             time.sleep(cooldown)
                         
@@ -513,13 +539,13 @@ def download_google_images(
                         # Se falhar muito seguido, faz uma pausa mais longa
                         if consecutive_failures >= 3:
                             on_log("[AVISO] Múltiplas falhas consecutivas, fazendo pausa longa...")
-                            time.sleep(random.uniform(15.0, 25.0))
+                            sleep_range(15.0, 25.0)
                             consecutive_failures = 0
 
                 except Exception as e:
                     on_log(f"[ERRO] Exceção ao processar thumbnail: {e}")
                     keep_main_tab()
-                    time.sleep(random.uniform(2.0, 4.0))
+                    sleep_range(2.0, 4.0)
 
             start_img_idx = 1
 
