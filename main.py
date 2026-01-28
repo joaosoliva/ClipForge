@@ -10,7 +10,8 @@ from typing import Optional, List, Dict, Any
 import pysrt
 from unidecode import unidecode
 
-from clip_specs import ClipSpec, ImageLayer, StickmanAnim, StickmanLayer
+from animation_curves import validate_keyframes
+from clip_specs import BlurEntrySpec, ClipSpec, ImageLayer, KeyframeSpec, StickmanAnim, StickmanLayer
 from config import (
     AUDIO_EXTENSIONS,
     END_PAD_SECONDS,
@@ -283,6 +284,73 @@ def find_stickman_for_trigger(trigger: str, stickman_guide, subs) -> Dict[str, s
 
     return {"path": default_path, "speech": ""}
 
+
+def _parse_blur_entry(blur_cfg: Any) -> Optional[BlurEntrySpec]:
+    if not isinstance(blur_cfg, dict):
+        return None
+    enabled = blur_cfg.get("enabled", True)
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in {"false", "0", "no"}
+    enabled = bool(enabled)
+    duration = blur_cfg.get("duration")
+    strength = blur_cfg.get("strength")
+    method = str(blur_cfg.get("method", "tblend")).strip().lower()
+    if duration is not None:
+        try:
+            duration = float(duration)
+            if duration <= 0:
+                duration = None
+        except (TypeError, ValueError):
+            duration = None
+    if strength is not None:
+        try:
+            strength = float(strength)
+        except (TypeError, ValueError):
+            strength = None
+    return BlurEntrySpec(
+        enabled=enabled,
+        duration=duration,
+        strength=strength,
+        method=method,
+    )
+
+
+def _parse_keyframes(kf_cfg: Any) -> List[KeyframeSpec]:
+    if not isinstance(kf_cfg, list):
+        return []
+    keyframes: List[KeyframeSpec] = []
+    for raw in kf_cfg:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            time = float(raw.get("time", 0))
+        except (TypeError, ValueError):
+            continue
+        easing = str(raw.get("easing", "linear")).strip() or "linear"
+        values: Dict[str, float] = {}
+        for key in ("x", "y", "scale", "opacity"):
+            if key in raw:
+                try:
+                    values[key] = float(raw[key])
+                except (TypeError, ValueError):
+                    continue
+        if values:
+            keyframes.append(KeyframeSpec(time=time, value=values, easing=easing))
+    keyframes.sort(key=lambda kf: kf.time)
+    return keyframes
+
+
+def _validate_keyframe_ranges(keyframes: List[KeyframeSpec], duration: float) -> List[str]:
+    errors: List[str] = []
+    if duration <= 0:
+        return errors
+    for kf in keyframes:
+        if kf.time > duration:
+            errors.append(
+                f"Keyframe time {kf.time:.3f}s exceeds clip duration {duration:.3f}s."
+            )
+    return errors
+
 def build_timeline(
     subs,
     guide,
@@ -319,6 +387,8 @@ def build_timeline(
         effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
         zoom_enabled = False if disable_zoom else effects.get("zoom", False)
         slide_direction = effects.get("slide")
+        blur_entry_cfg = effects.get("blur_entry") if isinstance(effects.get("blur_entry"), dict) else None
+        keyframes_cfg = effects.get("keyframes")
 
         images: List[Dict[str, Any]] = []
         for image_id in image_ids:
@@ -330,6 +400,8 @@ def build_timeline(
                 "path": image,
                 "zoom_enabled": zoom_enabled,
                 "slide_direction": slide_direction,
+                "blur_entry": blur_entry_cfg,
+                "keyframes": keyframes_cfg,
             })
 
         return images
@@ -547,14 +619,25 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
 
         out_clip = os.path.join(paths.output_dir, f"clip_{idx-1:03d}.mp4")
 
-        images = [
-            ImageLayer(
-                path=image["path"],
-                zoom_enabled=image.get("zoom_enabled", False),
-                slide_direction=image.get("slide_direction"),
+        images = []
+        for image in item["images"]:
+            blur_entry = _parse_blur_entry(image.get("blur_entry"))
+            keyframes = _parse_keyframes(image.get("keyframes"))
+            keyframe_errors = validate_keyframes(keyframes)
+            keyframe_errors.extend(
+                _validate_keyframe_ranges(keyframes, float(item.get("duration", 0)))
             )
-            for image in item["images"]
-        ]
+            for err in keyframe_errors:
+                print_safe(f"[WARN] Keyframes inválidos em '{image.get('path')}': {err}")
+            images.append(
+                ImageLayer(
+                    path=image["path"],
+                    zoom_enabled=image.get("zoom_enabled", False),
+                    slide_direction=image.get("slide_direction"),
+                    blur_entry=blur_entry,
+                    keyframes=keyframes,
+                )
+            )
 
         stickman_layer = None
         stickman_position = item.get("stickman_position") or stickman_side
