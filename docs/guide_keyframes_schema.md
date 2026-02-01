@@ -25,11 +25,12 @@ posições (x/y) e outros valores básicos.
 
 - `time` (number): tempo em segundos no clip.
 - `x`, `y` (number): posição absoluta em pixels.
-- `scale` (number, opcional): reservado para uso futuro.
-- `opacity` (number, opcional): reservado para uso futuro.
+- `scale` (number, opcional): escala relativa (1.0 = tamanho original).
+- `opacity` (number, opcional): opacidade relativa (1.0 = opaco, 0.0 = transparente).
 - `easing` (string): `linear`, `ease_in`, `ease_out`, `ease_in_out`,
   `cubic_in`, `cubic_out`, `cubic_in_out`.
 
 ## Observações
 - Se `keyframes` estiver definido, ele tem prioridade sobre `slide`.
 - Os valores `x` e `y` substituem o posicionamento calculado pelo layout.
+- `scale` e `opacity` são aplicados via expressões FFmpeg por frame.

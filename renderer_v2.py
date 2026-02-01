@@ -24,6 +24,7 @@ from config import (
 )
 from layouts import resolve_layout
 from stickman_animations import build_stickman_animation
+from timeline_expressions import build_piecewise_expr
 
 
 def _is_gif(path: str) -> bool:
@@ -149,6 +150,23 @@ def _build_image_filter(
         )
 
     output_label = "[img]"
+
+    if image.keyframes:
+        scale_expr = build_piecewise_expr(image.keyframes, "scale", "1")
+        opacity_expr = build_piecewise_expr(image.keyframes, "opacity", "1")
+        if scale_expr != "1":
+            scale_label = "img_scale"
+            filters.append(
+                f"{output_label}scale=iw*({scale_expr}):ih*({scale_expr}):eval=frame[{scale_label}]"
+            )
+            output_label = f"[{scale_label}]"
+        if opacity_expr != "1":
+            opacity_label = "img_alpha"
+            filters.append(
+                f"{output_label}format=rgba,geq=r='r':g='g':b='b':a='255*({opacity_expr})'"
+                f"[{opacity_label}]"
+            )
+            output_label = f"[{opacity_label}]"
     if image.slide_direction and image.blur_entry and image.blur_entry.enabled:
         blur_filters, output_label = _build_entry_blur(
             blur=image.blur_entry,
