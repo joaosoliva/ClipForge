@@ -351,6 +351,27 @@ def _validate_keyframe_ranges(keyframes: List[KeyframeSpec], duration: float) ->
             )
     return errors
 
+
+def _clamp_keyframe_ranges(keyframes: List[KeyframeSpec], duration: float) -> List[KeyframeSpec]:
+    if duration <= 0:
+        return keyframes
+    clamped: List[KeyframeSpec] = []
+    for kf in keyframes:
+        if kf.time < 0:
+            clamped_time = 0.0
+        elif kf.time > duration:
+            clamped_time = duration
+        else:
+            clamped_time = kf.time
+        if clamped_time != kf.time:
+            clamped.append(
+                KeyframeSpec(time=clamped_time, value=kf.value, easing=kf.easing)
+            )
+        else:
+            clamped.append(kf)
+    clamped.sort(key=lambda k: k.time)
+    return clamped
+
 def build_timeline(
     subs,
     guide,
@@ -631,6 +652,8 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
             )
             for err in keyframe_errors:
                 print_safe(f"[WARN] Keyframes inválidos em '{image.get('path')}': {err}")
+            if keyframe_errors:
+                keyframes = _clamp_keyframe_ranges(keyframes, float(item.get("duration", 0)))
             images.append(
                 ImageLayer(
                     path=image["path"],
@@ -686,7 +709,10 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
             text_anchor=item.get("text_anchor"),
             text_margin=item.get("text_margin"),
             text_anchor_slot=item.get("text_anchor_slot"),
-            text_keyframes=_parse_keyframes(item.get("text_keyframes")),
+            text_keyframes=_clamp_keyframe_ranges(
+                _parse_keyframes(item.get("text_keyframes")),
+                float(item.get("duration", 0)),
+            ),
         )
 
         warnings = render_clip(clip_spec, out_clip)

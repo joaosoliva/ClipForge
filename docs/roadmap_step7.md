@@ -7,9 +7,11 @@ expressões FFmpeg inválidas ou movimentações fora de janela.
 ## Entregas deste passo
 1. **Validação por duração** dos keyframes ao construir `ImageLayer`.
 2. **Warnings claros** quando tempos excedem a duração.
+3. **Clamp automático** de keyframes fora do range.
 
 ## Implementação
 - `main.py` valida `time > duration` e emite aviso.
+- Keyframes fora da duração são ajustados para `0` ou `duration`.
 
 ## Próximos passos
 - Ajustar automaticamente keyframes fora de range (clamp opcional).
