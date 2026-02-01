@@ -891,6 +891,23 @@ class EditTab(tk.Frame):
 
         # Keyframes (mínimo)
         tk.Label(edit_frame, text="Keyframes (posição):", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=535)
+        self.keyframe_target_var = tk.StringVar(value="image")
+        tk.Radiobutton(
+            edit_frame,
+            text="Imagem",
+            variable=self.keyframe_target_var,
+            value="image",
+            bg="#c0c0c0",
+            command=self._on_keyframe_target_changed,
+        ).place(x=200, y=533)
+        tk.Radiobutton(
+            edit_frame,
+            text="Texto",
+            variable=self.keyframe_target_var,
+            value="text",
+            bg="#c0c0c0",
+            command=self._on_keyframe_target_changed,
+        ).place(x=270, y=533)
         self.keyframes_listbox = tk.Listbox(edit_frame, width=40, height=5)
         self.keyframes_listbox.place(x=10, y=555)
         self.keyframes_listbox.bind("<<ListboxSelect>>", self._on_keyframe_selected)
@@ -919,7 +936,7 @@ class EditTab(tk.Frame):
         tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=330, y=635)
         tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=420, y=635)
 
-        self.keyframes_data = []
+        self.keyframes_data = {"image": [], "text": []}
 
         # Botões de ação
         tk.Button(
@@ -965,7 +982,7 @@ class EditTab(tk.Frame):
 
     def _refresh_keyframe_list(self):
         self.keyframes_listbox.delete(0, tk.END)
-        for kf in self.keyframes_data:
+        for kf in self._current_keyframes():
             time_val = kf.get("time", 0)
             x_val = kf.get("x", "")
             y_val = kf.get("y", "")
@@ -976,20 +993,31 @@ class EditTab(tk.Frame):
 
     def _load_keyframes_from_item(self, item):
         effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
-        keyframes = effects.get("keyframes", [])
-        self.keyframes_data = []
-        if isinstance(keyframes, list):
-            for kf in keyframes:
-                if not isinstance(kf, dict):
-                    continue
-                self.keyframes_data.append(
-                    {
-                        "time": kf.get("time", 0),
-                        "x": kf.get("x"),
-                        "y": kf.get("y"),
-                        "easing": kf.get("easing", "linear"),
-                    }
-                )
+        self.keyframes_data = {"image": [], "text": []}
+        self._load_keyframe_list(effects.get("keyframes", []), "image")
+        self._load_keyframe_list(effects.get("text_keyframes", []), "text")
+        self._refresh_keyframe_list()
+
+    def _load_keyframe_list(self, keyframes, target: str):
+        if not isinstance(keyframes, list):
+            return
+        for kf in keyframes:
+            if not isinstance(kf, dict):
+                continue
+            self.keyframes_data[target].append(
+                {
+                    "time": kf.get("time", 0),
+                    "x": kf.get("x"),
+                    "y": kf.get("y"),
+                    "easing": kf.get("easing", "linear"),
+                    "opacity": kf.get("opacity"),
+                }
+            )
+
+    def _current_keyframes(self):
+        return self.keyframes_data.get(self.keyframe_target_var.get(), [])
+
+    def _on_keyframe_target_changed(self):
         self._refresh_keyframe_list()
 
     def _on_keyframe_selected(self, event):
@@ -997,7 +1025,7 @@ class EditTab(tk.Frame):
         if not sel:
             return
         idx = sel[0]
-        kf = self.keyframes_data[idx]
+        kf = self._current_keyframes()[idx]
         self.kf_time_entry.delete(0, tk.END)
         self.kf_time_entry.insert(0, str(kf.get("time", "")))
         self.kf_x_entry.delete(0, tk.END)
@@ -1019,10 +1047,10 @@ class EditTab(tk.Frame):
             messagebox.showwarning("Aviso", "X/Y inválidos para keyframe.")
             return
         easing = self.kf_easing_combo.get().strip() or "linear"
-        self.keyframes_data.append(
+        self._current_keyframes().append(
             {"time": time_val, "x": x_val, "y": y_val, "easing": easing}
         )
-        self.keyframes_data.sort(key=lambda k: k.get("time", 0))
+        self._current_keyframes().sort(key=lambda k: k.get("time", 0))
         self._refresh_keyframe_list()
         self._schedule_auto_save()
 
@@ -1031,7 +1059,7 @@ class EditTab(tk.Frame):
         if not sel:
             return
         idx = sel[0]
-        del self.keyframes_data[idx]
+        del self._current_keyframes()[idx]
         self._refresh_keyframe_list()
         self._schedule_auto_save()
 
@@ -1584,7 +1612,7 @@ class EditTab(tk.Frame):
             else:
                 self.blur_entry_var.set(False)
 
-            self.keyframes_data = []
+            self.keyframes_data = {"image": [], "text": []}
             self._refresh_keyframe_list()
 
             # Preview mostra primeira imagem
@@ -1763,8 +1791,10 @@ class EditTab(tk.Frame):
         if self.blur_entry_var.get():
             effects["blur_entry"] = {"enabled": True}
 
-        if self.keyframes_data:
-            effects["keyframes"] = list(self.keyframes_data)
+        if self.keyframes_data.get("image"):
+            effects["keyframes"] = list(self.keyframes_data["image"])
+        if self.keyframes_data.get("text"):
+            effects["text_keyframes"] = list(self.keyframes_data["text"])
 
         if effects:
             self.guide_data[idx]["effects"] = effects
@@ -1774,6 +1804,7 @@ class EditTab(tk.Frame):
             effects = self.guide_data[idx].get("effects", {})
             if isinstance(effects, dict):
                 effects.pop("keyframes", None)
+                effects.pop("text_keyframes", None)
                 if not effects:
                     self.guide_data[idx].pop("effects", None)
 
