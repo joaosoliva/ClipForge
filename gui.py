@@ -889,6 +889,38 @@ class EditTab(tk.Frame):
             command=self._schedule_auto_save,
         ).place(x=10, y=505)
 
+        # Keyframes (mínimo)
+        tk.Label(edit_frame, text="Keyframes (posição):", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=535)
+        self.keyframes_listbox = tk.Listbox(edit_frame, width=40, height=5)
+        self.keyframes_listbox.place(x=10, y=555)
+        self.keyframes_listbox.bind("<<ListboxSelect>>", self._on_keyframe_selected)
+
+        self.kf_time_entry = tk.Entry(edit_frame, width=6)
+        self.kf_time_entry.place(x=10, y=640)
+        tk.Label(edit_frame, text="t", bg="#c0c0c0").place(x=60, y=638)
+
+        self.kf_x_entry = tk.Entry(edit_frame, width=6)
+        self.kf_x_entry.place(x=80, y=640)
+        tk.Label(edit_frame, text="x", bg="#c0c0c0").place(x=130, y=638)
+
+        self.kf_y_entry = tk.Entry(edit_frame, width=6)
+        self.kf_y_entry.place(x=150, y=640)
+        tk.Label(edit_frame, text="y", bg="#c0c0c0").place(x=200, y=638)
+
+        self.kf_easing_combo = ttk.Combobox(
+            edit_frame,
+            values=["linear", "ease_in", "ease_out", "ease_in_out", "cubic_in", "cubic_out", "cubic_in_out"],
+            state="readonly",
+            width=10,
+        )
+        self.kf_easing_combo.place(x=220, y=640)
+        self.kf_easing_combo.set("linear")
+
+        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=330, y=635)
+        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=420, y=635)
+
+        self.keyframes_data = []
+
         # Botões de ação
         tk.Button(
             edit_frame,
@@ -908,6 +940,9 @@ class EditTab(tk.Frame):
             self.text_entry,
             self.image_id_entry,
             self.text_margin_entry,
+            self.kf_time_entry,
+            self.kf_x_entry,
+            self.kf_y_entry,
         ]
         for widget in entry_widgets:
             widget.bind("<KeyRelease>", self._schedule_auto_save)
@@ -919,12 +954,85 @@ class EditTab(tk.Frame):
             self.stickman_anim_combo,
             self.stickman_anim_dir_combo,
             self.stickman_position_combo,
+            self.kf_easing_combo,
         ]
         for widget in combo_widgets:
             widget.bind("<<ComboboxSelected>>", self._schedule_auto_save)
 
     def _on_mode_changed(self):
         self._sync_mode_fields()
+        self._schedule_auto_save()
+
+    def _refresh_keyframe_list(self):
+        self.keyframes_listbox.delete(0, tk.END)
+        for kf in self.keyframes_data:
+            time_val = kf.get("time", 0)
+            x_val = kf.get("x", "")
+            y_val = kf.get("y", "")
+            easing = kf.get("easing", "linear")
+            self.keyframes_listbox.insert(
+                tk.END, f"t={time_val} x={x_val} y={y_val} ({easing})"
+            )
+
+    def _load_keyframes_from_item(self, item):
+        effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
+        keyframes = effects.get("keyframes", [])
+        self.keyframes_data = []
+        if isinstance(keyframes, list):
+            for kf in keyframes:
+                if not isinstance(kf, dict):
+                    continue
+                self.keyframes_data.append(
+                    {
+                        "time": kf.get("time", 0),
+                        "x": kf.get("x"),
+                        "y": kf.get("y"),
+                        "easing": kf.get("easing", "linear"),
+                    }
+                )
+        self._refresh_keyframe_list()
+
+    def _on_keyframe_selected(self, event):
+        sel = self.keyframes_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        kf = self.keyframes_data[idx]
+        self.kf_time_entry.delete(0, tk.END)
+        self.kf_time_entry.insert(0, str(kf.get("time", "")))
+        self.kf_x_entry.delete(0, tk.END)
+        self.kf_x_entry.insert(0, str(kf.get("x", "")))
+        self.kf_y_entry.delete(0, tk.END)
+        self.kf_y_entry.insert(0, str(kf.get("y", "")))
+        self.kf_easing_combo.set(kf.get("easing", "linear"))
+
+    def _add_keyframe(self):
+        try:
+            time_val = float(self.kf_time_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning("Aviso", "Tempo inválido para keyframe.")
+            return
+        try:
+            x_val = float(self.kf_x_entry.get().strip())
+            y_val = float(self.kf_y_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning("Aviso", "X/Y inválidos para keyframe.")
+            return
+        easing = self.kf_easing_combo.get().strip() or "linear"
+        self.keyframes_data.append(
+            {"time": time_val, "x": x_val, "y": y_val, "easing": easing}
+        )
+        self.keyframes_data.sort(key=lambda k: k.get("time", 0))
+        self._refresh_keyframe_list()
+        self._schedule_auto_save()
+
+    def _remove_keyframe(self):
+        sel = self.keyframes_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        del self.keyframes_data[idx]
+        self._refresh_keyframe_list()
         self._schedule_auto_save()
 
     def _schedule_auto_save(self, event=None):
@@ -1404,6 +1512,7 @@ class EditTab(tk.Frame):
             self.slide_var.set(effects.get("slide", "none") or "none")
             blur_entry = effects.get("blur_entry", {}) if isinstance(effects.get("blur_entry"), dict) else {}
             self.blur_entry_var.set(bool(blur_entry.get("enabled", False)))
+            self._load_keyframes_from_item(item)
 
             stickman_anim = item.get("stickman_anim") or {}
             anim_name = stickman_anim.get("name", "") if isinstance(stickman_anim, dict) else ""
@@ -1474,6 +1583,9 @@ class EditTab(tk.Frame):
                 self.blur_entry_var.set(False)
             else:
                 self.blur_entry_var.set(False)
+
+            self.keyframes_data = []
+            self._refresh_keyframe_list()
 
             # Preview mostra primeira imagem
             first_item = self.guide_data[sel[0]]
@@ -1651,10 +1763,19 @@ class EditTab(tk.Frame):
         if self.blur_entry_var.get():
             effects["blur_entry"] = {"enabled": True}
 
+        if self.keyframes_data:
+            effects["keyframes"] = list(self.keyframes_data)
+
         if effects:
             self.guide_data[idx]["effects"] = effects
         elif "effects" in self.guide_data[idx]:
             del self.guide_data[idx]["effects"]
+        else:
+            effects = self.guide_data[idx].get("effects", {})
+            if isinstance(effects, dict):
+                effects.pop("keyframes", None)
+                if not effects:
+                    self.guide_data[idx].pop("effects", None)
 
         anim_name = self.stickman_anim_combo.get().strip()
         anim_direction = self.stickman_anim_dir_combo.get().strip()
