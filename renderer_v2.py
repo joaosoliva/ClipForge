@@ -318,10 +318,16 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
     if spec.text and anchored_text_exprs is not None:
         text = _escape_text(spec.text)
         text_x, text_y = anchored_text_exprs
+        text_alpha = "1"
+        if spec.text_keyframes:
+            text_x = build_piecewise_expr(spec.text_keyframes, "x", text_x)
+            text_y = build_piecewise_expr(spec.text_keyframes, "y", text_y)
+            text_alpha = build_piecewise_expr(spec.text_keyframes, "opacity", "1")
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
             f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}[vtext]"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}:"
+            f"alpha={_quote_expr(text_alpha)}[vtext]"
         )
         cur = "[vtext]"
         text_applied_to_anchor = True
@@ -344,10 +350,18 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
 
     if spec.text and not text_applied_to_anchor:
         text = _escape_text(spec.text)
+        text_x = "(w-text_w)/2"
+        text_y = "(h-text_h)/2"
+        text_alpha = "1"
+        if spec.text_keyframes:
+            text_x = build_piecewise_expr(spec.text_keyframes, "x", text_x)
+            text_y = build_piecewise_expr(spec.text_keyframes, "y", text_y)
+            text_alpha = build_piecewise_expr(spec.text_keyframes, "opacity", "1")
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
             f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-            f"x=(w-text_w)/2:y=(h-text_h)/2[vtext]"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}:"
+            f"alpha={_quote_expr(text_alpha)}[vtext]"
         )
         cur = "[vtext]"
 

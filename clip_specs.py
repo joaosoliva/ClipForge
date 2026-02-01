@@ -38,6 +38,7 @@ class ClipSpec:
     text_anchor: Optional[str] = None
     text_margin: Optional[int] = None
     text_anchor_slot: Optional[int] = None
+    text_keyframes: Sequence["KeyframeSpec"] = field(default_factory=list)
     timeline: Optional["TimelineSpec"] = None
 
 

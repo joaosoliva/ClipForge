@@ -34,3 +34,21 @@ posições (x/y) e outros valores básicos.
 - Se `keyframes` estiver definido, ele tem prioridade sobre `slide`.
 - Os valores `x` e `y` substituem o posicionamento calculado pelo layout.
 - `scale` e `opacity` são aplicados via expressões FFmpeg por frame.
+
+## Keyframes de texto
+
+Para animar texto, use `effects.text_keyframes` com o mesmo formato:
+
+```json
+{
+  "effects": {
+    "text_keyframes": [
+      { "time": 0.0, "x": 80, "y": 120, "opacity": 0.0, "easing": "linear" },
+      { "time": 0.6, "x": 80, "y": 120, "opacity": 1.0, "easing": "ease_out" }
+    ]
+  }
+}
+```
+
+- `x`/`y` afetam a posição do `drawtext`.
+- `opacity` controla o `alpha` do texto.

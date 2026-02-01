@@ -389,6 +389,7 @@ def build_timeline(
         slide_direction = effects.get("slide")
         blur_entry_cfg = effects.get("blur_entry") if isinstance(effects.get("blur_entry"), dict) else None
         keyframes_cfg = effects.get("keyframes")
+        text_keyframes_cfg = effects.get("text_keyframes")
 
         images: List[Dict[str, Any]] = []
         for image_id in image_ids:
@@ -535,6 +536,7 @@ def build_timeline(
             "text_anchor": text_anchor,
             "text_margin": item.get("text_margin"),
             "text_anchor_slot": child_text_anchor_slot.get(idx),
+            "text_keyframes": text_keyframes_cfg,
             "mode": mode,
             "stickman_cfg": stickman_cfg,
             "layout": layout_name,
@@ -684,6 +686,7 @@ def process_job(paths: JobPaths, use_stickman: bool, disable_zoom: bool, stickma
             text_anchor=item.get("text_anchor"),
             text_margin=item.get("text_margin"),
             text_anchor_slot=item.get("text_anchor_slot"),
+            text_keyframes=_parse_keyframes(item.get("text_keyframes")),
         )
 
         warnings = render_clip(clip_spec, out_clip)
