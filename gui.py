@@ -924,17 +924,25 @@ class EditTab(tk.Frame):
         self.kf_y_entry.place(x=150, y=640)
         tk.Label(edit_frame, text="y", bg="#c0c0c0").place(x=200, y=638)
 
+        self.kf_scale_entry = tk.Entry(edit_frame, width=6)
+        self.kf_scale_entry.place(x=220, y=640)
+        tk.Label(edit_frame, text="scale", bg="#c0c0c0").place(x=270, y=638)
+
+        self.kf_opacity_entry = tk.Entry(edit_frame, width=6)
+        self.kf_opacity_entry.place(x=300, y=640)
+        tk.Label(edit_frame, text="opacity", bg="#c0c0c0").place(x=350, y=638)
+
         self.kf_easing_combo = ttk.Combobox(
             edit_frame,
             values=["linear", "ease_in", "ease_out", "ease_in_out", "cubic_in", "cubic_out", "cubic_in_out"],
             state="readonly",
             width=10,
         )
-        self.kf_easing_combo.place(x=220, y=640)
+        self.kf_easing_combo.place(x=380, y=640)
         self.kf_easing_combo.set("linear")
 
-        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=330, y=635)
-        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=420, y=635)
+        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=500, y=635)
+        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=580, y=635)
 
         self.keyframes_data = {"image": [], "text": []}
 
@@ -960,6 +968,8 @@ class EditTab(tk.Frame):
             self.kf_time_entry,
             self.kf_x_entry,
             self.kf_y_entry,
+            self.kf_scale_entry,
+            self.kf_opacity_entry,
         ]
         for widget in entry_widgets:
             widget.bind("<KeyRelease>", self._schedule_auto_save)
@@ -986,9 +996,13 @@ class EditTab(tk.Frame):
             time_val = kf.get("time", 0)
             x_val = kf.get("x", "")
             y_val = kf.get("y", "")
+            scale_val = kf.get("scale", "")
+            opacity_val = kf.get("opacity", "")
             easing = kf.get("easing", "linear")
             self.keyframes_listbox.insert(
-                tk.END, f"t={time_val} x={x_val} y={y_val} ({easing})"
+                tk.END,
+                f"t={time_val} x={x_val} y={y_val} "
+                f"scale={scale_val} opacity={opacity_val} ({easing})",
             )
 
     def _load_keyframes_from_item(self, item):
@@ -1011,6 +1025,7 @@ class EditTab(tk.Frame):
                     "y": kf.get("y"),
                     "easing": kf.get("easing", "linear"),
                     "opacity": kf.get("opacity"),
+                    "scale": kf.get("scale"),
                 }
             )
 
@@ -1032,6 +1047,10 @@ class EditTab(tk.Frame):
         self.kf_x_entry.insert(0, str(kf.get("x", "")))
         self.kf_y_entry.delete(0, tk.END)
         self.kf_y_entry.insert(0, str(kf.get("y", "")))
+        self.kf_scale_entry.delete(0, tk.END)
+        self.kf_scale_entry.insert(0, str(kf.get("scale", "")))
+        self.kf_opacity_entry.delete(0, tk.END)
+        self.kf_opacity_entry.insert(0, str(kf.get("opacity", "")))
         self.kf_easing_combo.set(kf.get("easing", "linear"))
 
     def _add_keyframe(self):
@@ -1046,10 +1065,23 @@ class EditTab(tk.Frame):
         except ValueError:
             messagebox.showwarning("Aviso", "X/Y inválidos para keyframe.")
             return
+        scale_val = self.kf_scale_entry.get().strip()
+        opacity_val = self.kf_opacity_entry.get().strip()
         easing = self.kf_easing_combo.get().strip() or "linear"
-        self._current_keyframes().append(
-            {"time": time_val, "x": x_val, "y": y_val, "easing": easing}
-        )
+        payload = {"time": time_val, "x": x_val, "y": y_val, "easing": easing}
+        if scale_val:
+            try:
+                payload["scale"] = float(scale_val)
+            except ValueError:
+                messagebox.showwarning("Aviso", "Scale inválido para keyframe.")
+                return
+        if opacity_val:
+            try:
+                payload["opacity"] = float(opacity_val)
+            except ValueError:
+                messagebox.showwarning("Aviso", "Opacity inválido para keyframe.")
+                return
+        self._current_keyframes().append(payload)
         self._current_keyframes().sort(key=lambda k: k.get("time", 0))
         self._refresh_keyframe_list()
         self._schedule_auto_save()
