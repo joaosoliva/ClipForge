@@ -879,6 +879,16 @@ class EditTab(tk.Frame):
                 command=self._schedule_auto_save,
             ).place(x=10 + (i * 70), y=470)
 
+        # Blur (entrada)
+        self.blur_entry_var = tk.BooleanVar()
+        tk.Checkbutton(
+            edit_frame,
+            text="Blur entrada",
+            variable=self.blur_entry_var,
+            bg="#c0c0c0",
+            command=self._schedule_auto_save,
+        ).place(x=10, y=505)
+
         # Botões de ação
         tk.Button(
             edit_frame,
@@ -1392,6 +1402,8 @@ class EditTab(tk.Frame):
             effects = item.get("effects", {})
             self.zoom_var.set(effects.get("zoom", False))
             self.slide_var.set(effects.get("slide", "none") or "none")
+            blur_entry = effects.get("blur_entry", {}) if isinstance(effects.get("blur_entry"), dict) else {}
+            self.blur_entry_var.set(bool(blur_entry.get("enabled", False)))
 
             stickman_anim = item.get("stickman_anim") or {}
             anim_name = stickman_anim.get("name", "") if isinstance(stickman_anim, dict) else ""
@@ -1452,6 +1464,16 @@ class EditTab(tk.Frame):
                 self.zoom_var.set(False)
 
             self.slide_var.set("none")
+            blur_states = [
+                bool(self.guide_data[i].get("effects", {}).get("blur_entry", {}).get("enabled", False))
+                for i in sel
+            ]
+            if all(blur_states):
+                self.blur_entry_var.set(True)
+            elif not any(blur_states):
+                self.blur_entry_var.set(False)
+            else:
+                self.blur_entry_var.set(False)
 
             # Preview mostra primeira imagem
             first_item = self.guide_data[sel[0]]
@@ -1626,6 +1648,9 @@ class EditTab(tk.Frame):
         if slide and slide != "none":
             effects["slide"] = slide
 
+        if self.blur_entry_var.get():
+            effects["blur_entry"] = {"enabled": True}
+
         if effects:
             self.guide_data[idx]["effects"] = effects
         elif "effects" in self.guide_data[idx]:
@@ -1677,7 +1702,8 @@ class EditTab(tk.Frame):
             "Confirmar",
             f"Aplicar effects em {len(sel)} itens selecionados?\n\n"
             f"Zoom: {'SIM' if self.zoom_var.get() else 'NÃO'}\n"
-            f"Slide: {self.slide_var.get().upper()}"
+            f"Slide: {self.slide_var.get().upper()}\n"
+            f"Blur entrada: {'SIM' if self.blur_entry_var.get() else 'NÃO'}"
         ):
             return
 
@@ -1701,6 +1727,9 @@ class EditTab(tk.Frame):
             if slide and slide != "none":
                 effects["slide"] = slide
 
+            if self.blur_entry_var.get():
+                effects["blur_entry"] = {"enabled": True}
+
             if effects:
                 if "effects" not in self.guide_data[idx]:
                     self.guide_data[idx]["effects"] = {}
@@ -1708,6 +1737,13 @@ class EditTab(tk.Frame):
             else:
                 if "effects" in self.guide_data[idx]:
                     del self.guide_data[idx]["effects"]
+
+            if not self.blur_entry_var.get() and "effects" in self.guide_data[idx]:
+                blur_entry = self.guide_data[idx]["effects"].get("blur_entry")
+                if isinstance(blur_entry, dict):
+                    self.guide_data[idx]["effects"].pop("blur_entry", None)
+                if not self.guide_data[idx]["effects"]:
+                    self.guide_data[idx].pop("effects", None)
 
             mode = self._normalize_mode(self.guide_data[idx].get("mode", GUIDE_MODES[1]))
             if mode != "text-only":
