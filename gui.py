@@ -908,29 +908,29 @@ class EditTab(tk.Frame):
             bg="#c0c0c0",
             command=self._on_keyframe_target_changed,
         ).place(x=270, y=533)
-        self.keyframes_listbox = tk.Listbox(edit_frame, width=40, height=5)
-        self.keyframes_listbox.place(x=10, y=555)
+        self.keyframes_listbox = tk.Listbox(edit_frame, width=40, height=4)
+        self.keyframes_listbox.place(x=10, y=550)
         self.keyframes_listbox.bind("<<ListboxSelect>>", self._on_keyframe_selected)
 
         self.kf_time_entry = tk.Entry(edit_frame, width=6)
-        self.kf_time_entry.place(x=10, y=640)
-        tk.Label(edit_frame, text="t", bg="#c0c0c0").place(x=60, y=638)
+        self.kf_time_entry.place(x=10, y=625)
+        tk.Label(edit_frame, text="t", bg="#c0c0c0").place(x=60, y=623)
 
         self.kf_x_entry = tk.Entry(edit_frame, width=6)
-        self.kf_x_entry.place(x=80, y=640)
-        tk.Label(edit_frame, text="x", bg="#c0c0c0").place(x=130, y=638)
+        self.kf_x_entry.place(x=80, y=625)
+        tk.Label(edit_frame, text="x", bg="#c0c0c0").place(x=130, y=623)
 
         self.kf_y_entry = tk.Entry(edit_frame, width=6)
-        self.kf_y_entry.place(x=150, y=640)
-        tk.Label(edit_frame, text="y", bg="#c0c0c0").place(x=200, y=638)
+        self.kf_y_entry.place(x=150, y=625)
+        tk.Label(edit_frame, text="y", bg="#c0c0c0").place(x=200, y=623)
 
         self.kf_scale_entry = tk.Entry(edit_frame, width=6)
-        self.kf_scale_entry.place(x=220, y=640)
-        tk.Label(edit_frame, text="scale", bg="#c0c0c0").place(x=270, y=638)
+        self.kf_scale_entry.place(x=220, y=625)
+        tk.Label(edit_frame, text="scale", bg="#c0c0c0").place(x=270, y=623)
 
         self.kf_opacity_entry = tk.Entry(edit_frame, width=6)
-        self.kf_opacity_entry.place(x=300, y=640)
-        tk.Label(edit_frame, text="opacity", bg="#c0c0c0").place(x=350, y=638)
+        self.kf_opacity_entry.place(x=300, y=625)
+        tk.Label(edit_frame, text="opacity", bg="#c0c0c0").place(x=350, y=623)
 
         self.kf_easing_combo = ttk.Combobox(
             edit_frame,
@@ -938,11 +938,11 @@ class EditTab(tk.Frame):
             state="readonly",
             width=10,
         )
-        self.kf_easing_combo.place(x=380, y=640)
+        self.kf_easing_combo.place(x=380, y=625)
         self.kf_easing_combo.set("linear")
 
-        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=500, y=635)
-        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=580, y=635)
+        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=500, y=620)
+        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=580, y=620)
 
         self.keyframes_data = {"image": [], "text": []}
 
@@ -952,10 +952,10 @@ class EditTab(tk.Frame):
             text="Salvar item",
             width=20,
             command=lambda: self._apply_changes(autosave=True),
-        ).place(x=10, y=540)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=540)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=575)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=575)
+        ).place(x=10, y=680)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=680)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=715)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=715)
 
         self._bind_autosave_events()
 
