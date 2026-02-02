@@ -516,6 +516,8 @@ def build_timeline(
         if idx in child_layout_overrides:
             layout_name = child_layout_overrides[idx]
         layout_norm = _normalize_layout(layout_name)
+        effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
+        text_keyframes_cfg = effects.get("text_keyframes")
 
         matched_sub = None
         for sub in subs:
