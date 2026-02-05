@@ -3,7 +3,8 @@ import re
 import subprocess
 from typing import List
 
-from clip_specs import ClipSpec, ImageLayer, StickmanLayer
+from clip_specs import BlurEntrySpec, ClipSpec, ImageLayer, StickmanLayer
+from timeline_expressions import build_piecewise_expr
 from config import (
     BG_COLOR,
     DISABLE_ZOOM_ON_GIFS,
@@ -23,6 +24,7 @@ from config import (
 )
 from layouts import resolve_layout
 from stickman_animations import build_stickman_animation
+from timeline_expressions import build_piecewise_expr
 
 
 def _is_gif(path: str) -> bool:
@@ -74,6 +76,43 @@ def _scaled_image_size(path: str, target_w: int, target_h: int, zoom_enabled: bo
         return target_w, target_h
 
 
+def _build_entry_blur(
+    blur: BlurEntrySpec,
+    input_label: str,
+    duration: float,
+    fps: int,
+) -> tuple[List[str], str]:
+    filters: List[str] = []
+    blur_duration = blur.duration if blur.duration is not None else SLIDE_DURATION
+    if blur_duration <= 0:
+        return filters, input_label
+    blur_duration = min(blur_duration, duration)
+    enable_expr = f"between(t,0,{blur_duration})"
+    method = (blur.method or "tblend").strip().lower()
+    output_label = "img_blur"
+    if method == "boxblur":
+        radius = blur.strength if blur.strength is not None else 4.0
+        filters.append(
+            f"{input_label}boxblur=luma_radius={radius}:luma_power=1:"
+            f"enable='{enable_expr}'[{output_label}]"
+        )
+    elif method == "tmix":
+        frames = 3
+        if blur.strength is not None:
+            frames = max(2, int(round(blur.strength)))
+        filters.append(
+            f"{input_label}tmix=frames={frames}:enable='{enable_expr}'[{output_label}]"
+        )
+    else:
+        opacity = blur.strength if blur.strength is not None else 0.7
+        opacity = max(0.05, min(opacity, 1.0))
+        filters.append(
+            f"{input_label}tblend=all_mode=average:all_opacity={opacity}:"
+            f"enable='{enable_expr}'[{output_label}]"
+        )
+    return filters, f"[{output_label}]"
+
+
 def _build_image_filter(
     image: ImageLayer,
     input_label: str,
@@ -82,7 +121,7 @@ def _build_image_filter(
     target_w: int,
     target_h: int,
     fps: int,
-) -> List[str]:
+) -> tuple[List[str], str]:
     isgif = _is_gif(image.path)
     allow_zoom = image.zoom_enabled and not (isgif and DISABLE_ZOOM_ON_GIFS)
     filters: List[str] = []
@@ -110,7 +149,34 @@ def _build_image_filter(
             f"fps={fps}[img]"
         )
 
-    return filters
+    output_label = "[img]"
+
+    if image.keyframes:
+        scale_expr = build_piecewise_expr(image.keyframes, "scale", "1")
+        opacity_expr = build_piecewise_expr(image.keyframes, "opacity", "1")
+        if scale_expr != "1":
+            scale_label = "img_scale"
+            filters.append(
+                f"{output_label}scale=iw*({scale_expr}):ih*({scale_expr}):eval=frame[{scale_label}]"
+            )
+            output_label = f"[{scale_label}]"
+        if opacity_expr != "1":
+            opacity_label = "img_alpha"
+            filters.append(
+                f"{output_label}format=rgba,geq=r='r':g='g':b='b':a='255*({opacity_expr})'"
+                f"[{opacity_label}]"
+            )
+            output_label = f"[{opacity_label}]"
+    if image.slide_direction and image.blur_entry and image.blur_entry.enabled:
+        blur_filters, output_label = _build_entry_blur(
+            blur=image.blur_entry,
+            input_label=output_label,
+            duration=duration,
+            fps=fps,
+        )
+        filters.extend(blur_filters)
+
+    return filters, output_label
 
 
 def _apply_slide(final_x: str, final_y: str, slide_direction: str, fps: int) -> List[str]:
@@ -207,7 +273,7 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             continue
 
         slot = layout.image_slots[idx]
-        filters += _build_image_filter(
+        image_filters, image_label = _build_image_filter(
             image=image,
             input_label=f"[{idx}:v]",
             duration=spec.duration,
@@ -216,12 +282,16 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             target_h=slot.target_h,
             fps=spec.fps,
         )
+        filters += image_filters
 
         base_final_x = slot.x_expr
         base_final_y = slot.y_expr
         final_x = base_final_x
         final_y = base_final_y
-        if image.slide_direction:
+        if image.keyframes:
+            final_x = build_piecewise_expr(image.keyframes, "x", base_final_x)
+            final_y = build_piecewise_expr(image.keyframes, "y", base_final_y)
+        elif image.slide_direction:
             final_x, final_y = _apply_slide(final_x, final_y, image.slide_direction, spec.fps)
 
         if spec.text and idx == text_anchor_slot and text_anchor in {"top", "bottom"}:
@@ -241,17 +311,23 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
             anchored_text_exprs = (text_x, text_y)
 
         filters.append(
-            f"{cur}[img]overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
+            f"{cur}{image_label}overlay=x={_quote_expr(final_x)}:y={_quote_expr(final_y)}:shortest=1[v{idx}]"
         )
         cur = f"[v{idx}]"
 
     if spec.text and anchored_text_exprs is not None:
         text = _escape_text(spec.text)
         text_x, text_y = anchored_text_exprs
+        text_alpha = "1"
+        if spec.text_keyframes:
+            text_x = build_piecewise_expr(spec.text_keyframes, "x", text_x)
+            text_y = build_piecewise_expr(spec.text_keyframes, "y", text_y)
+            text_alpha = build_piecewise_expr(spec.text_keyframes, "opacity", "1")
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
             f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}[vtext]"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}:"
+            f"alpha={_quote_expr(text_alpha)}[vtext]"
         )
         cur = "[vtext]"
         text_applied_to_anchor = True
@@ -274,10 +350,18 @@ def render_clip(spec: ClipSpec, out: str) -> List[str]:
 
     if spec.text and not text_applied_to_anchor:
         text = _escape_text(spec.text)
+        text_x = "(w-text_w)/2"
+        text_y = "(h-text_h)/2"
+        text_alpha = "1"
+        if spec.text_keyframes:
+            text_x = build_piecewise_expr(spec.text_keyframes, "x", text_x)
+            text_y = build_piecewise_expr(spec.text_keyframes, "y", text_y)
+            text_alpha = build_piecewise_expr(spec.text_keyframes, "opacity", "1")
         filters.append(
             f"{cur}drawtext=fontfile={FONTFILE}:"
             f"text='{text}':fontsize={TEXT_SIZE}:fontcolor={TEXT_COLOR}:"
-            f"x=(w-text_w)/2:y=(h-text_h)/2[vtext]"
+            f"x={_quote_expr(text_x)}:y={_quote_expr(text_y)}:"
+            f"alpha={_quote_expr(text_alpha)}[vtext]"
         )
         cur = "[vtext]"
 

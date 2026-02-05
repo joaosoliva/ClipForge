@@ -879,16 +879,83 @@ class EditTab(tk.Frame):
                 command=self._schedule_auto_save,
             ).place(x=10 + (i * 70), y=470)
 
+        # Blur (entrada)
+        self.blur_entry_var = tk.BooleanVar()
+        tk.Checkbutton(
+            edit_frame,
+            text="Blur entrada",
+            variable=self.blur_entry_var,
+            bg="#c0c0c0",
+            command=self._schedule_auto_save,
+        ).place(x=10, y=505)
+
+        # Keyframes (mínimo)
+        tk.Label(edit_frame, text="Keyframes (posição):", bg="#c0c0c0", font=("Arial", 9, "bold")).place(x=10, y=535)
+        self.keyframe_target_var = tk.StringVar(value="image")
+        tk.Radiobutton(
+            edit_frame,
+            text="Imagem",
+            variable=self.keyframe_target_var,
+            value="image",
+            bg="#c0c0c0",
+            command=self._on_keyframe_target_changed,
+        ).place(x=200, y=533)
+        tk.Radiobutton(
+            edit_frame,
+            text="Texto",
+            variable=self.keyframe_target_var,
+            value="text",
+            bg="#c0c0c0",
+            command=self._on_keyframe_target_changed,
+        ).place(x=270, y=533)
+        self.keyframes_listbox = tk.Listbox(edit_frame, width=40, height=4)
+        self.keyframes_listbox.place(x=10, y=550)
+        self.keyframes_listbox.bind("<<ListboxSelect>>", self._on_keyframe_selected)
+
+        self.kf_time_entry = tk.Entry(edit_frame, width=6)
+        self.kf_time_entry.place(x=10, y=625)
+        tk.Label(edit_frame, text="t", bg="#c0c0c0").place(x=60, y=623)
+
+        self.kf_x_entry = tk.Entry(edit_frame, width=6)
+        self.kf_x_entry.place(x=80, y=625)
+        tk.Label(edit_frame, text="x", bg="#c0c0c0").place(x=130, y=623)
+
+        self.kf_y_entry = tk.Entry(edit_frame, width=6)
+        self.kf_y_entry.place(x=150, y=625)
+        tk.Label(edit_frame, text="y", bg="#c0c0c0").place(x=200, y=623)
+
+        self.kf_scale_entry = tk.Entry(edit_frame, width=6)
+        self.kf_scale_entry.place(x=220, y=625)
+        tk.Label(edit_frame, text="scale", bg="#c0c0c0").place(x=270, y=623)
+
+        self.kf_opacity_entry = tk.Entry(edit_frame, width=6)
+        self.kf_opacity_entry.place(x=300, y=625)
+        tk.Label(edit_frame, text="opacity", bg="#c0c0c0").place(x=350, y=623)
+
+        self.kf_easing_combo = ttk.Combobox(
+            edit_frame,
+            values=["linear", "ease_in", "ease_out", "ease_in_out", "cubic_in", "cubic_out", "cubic_in_out"],
+            state="readonly",
+            width=10,
+        )
+        self.kf_easing_combo.place(x=380, y=625)
+        self.kf_easing_combo.set("linear")
+
+        tk.Button(edit_frame, text="Adicionar", width=10, command=self._add_keyframe).place(x=500, y=620)
+        tk.Button(edit_frame, text="Remover", width=10, command=self._remove_keyframe).place(x=580, y=620)
+
+        self.keyframes_data = {"image": [], "text": []}
+
         # Botões de ação
         tk.Button(
             edit_frame,
             text="Salvar item",
             width=20,
             command=lambda: self._apply_changes(autosave=True),
-        ).place(x=10, y=540)
-        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=540)
-        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=575)
-        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=575)
+        ).place(x=10, y=680)
+        tk.Button(edit_frame, text="Aplicar efeitos no batch", width=20, command=self._apply_batch_effects).place(x=200, y=680)
+        tk.Button(edit_frame, text="Novo item", width=20, command=self._add_new_trigger).place(x=10, y=715)
+        tk.Button(edit_frame, text="Remover zoom do batch", width=20, command=self._disable_batch_zoom).place(x=200, y=715)
 
         self._bind_autosave_events()
 
@@ -898,6 +965,11 @@ class EditTab(tk.Frame):
             self.text_entry,
             self.image_id_entry,
             self.text_margin_entry,
+            self.kf_time_entry,
+            self.kf_x_entry,
+            self.kf_y_entry,
+            self.kf_scale_entry,
+            self.kf_opacity_entry,
         ]
         for widget in entry_widgets:
             widget.bind("<KeyRelease>", self._schedule_auto_save)
@@ -909,12 +981,118 @@ class EditTab(tk.Frame):
             self.stickman_anim_combo,
             self.stickman_anim_dir_combo,
             self.stickman_position_combo,
+            self.kf_easing_combo,
         ]
         for widget in combo_widgets:
             widget.bind("<<ComboboxSelected>>", self._schedule_auto_save)
 
     def _on_mode_changed(self):
         self._sync_mode_fields()
+        self._schedule_auto_save()
+
+    def _refresh_keyframe_list(self):
+        self.keyframes_listbox.delete(0, tk.END)
+        for kf in self._current_keyframes():
+            time_val = kf.get("time", 0)
+            x_val = kf.get("x", "")
+            y_val = kf.get("y", "")
+            scale_val = kf.get("scale", "")
+            opacity_val = kf.get("opacity", "")
+            easing = kf.get("easing", "linear")
+            self.keyframes_listbox.insert(
+                tk.END,
+                f"t={time_val} x={x_val} y={y_val} "
+                f"scale={scale_val} opacity={opacity_val} ({easing})",
+            )
+
+    def _load_keyframes_from_item(self, item):
+        effects = item.get("effects", {}) if isinstance(item.get("effects"), dict) else {}
+        self.keyframes_data = {"image": [], "text": []}
+        self._load_keyframe_list(effects.get("keyframes", []), "image")
+        self._load_keyframe_list(effects.get("text_keyframes", []), "text")
+        self._refresh_keyframe_list()
+
+    def _load_keyframe_list(self, keyframes, target: str):
+        if not isinstance(keyframes, list):
+            return
+        for kf in keyframes:
+            if not isinstance(kf, dict):
+                continue
+            self.keyframes_data[target].append(
+                {
+                    "time": kf.get("time", 0),
+                    "x": kf.get("x"),
+                    "y": kf.get("y"),
+                    "easing": kf.get("easing", "linear"),
+                    "opacity": kf.get("opacity"),
+                    "scale": kf.get("scale"),
+                }
+            )
+
+    def _current_keyframes(self):
+        return self.keyframes_data.get(self.keyframe_target_var.get(), [])
+
+    def _on_keyframe_target_changed(self):
+        self._refresh_keyframe_list()
+
+    def _on_keyframe_selected(self, event):
+        sel = self.keyframes_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        kf = self._current_keyframes()[idx]
+        self.kf_time_entry.delete(0, tk.END)
+        self.kf_time_entry.insert(0, str(kf.get("time", "")))
+        self.kf_x_entry.delete(0, tk.END)
+        self.kf_x_entry.insert(0, str(kf.get("x", "")))
+        self.kf_y_entry.delete(0, tk.END)
+        self.kf_y_entry.insert(0, str(kf.get("y", "")))
+        self.kf_scale_entry.delete(0, tk.END)
+        self.kf_scale_entry.insert(0, str(kf.get("scale", "")))
+        self.kf_opacity_entry.delete(0, tk.END)
+        self.kf_opacity_entry.insert(0, str(kf.get("opacity", "")))
+        self.kf_easing_combo.set(kf.get("easing", "linear"))
+
+    def _add_keyframe(self):
+        try:
+            time_val = float(self.kf_time_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning("Aviso", "Tempo inválido para keyframe.")
+            return
+        try:
+            x_val = float(self.kf_x_entry.get().strip())
+            y_val = float(self.kf_y_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning("Aviso", "X/Y inválidos para keyframe.")
+            return
+        scale_val = self.kf_scale_entry.get().strip()
+        opacity_val = self.kf_opacity_entry.get().strip()
+        easing = self.kf_easing_combo.get().strip() or "linear"
+        payload = {"time": time_val, "x": x_val, "y": y_val, "easing": easing}
+        if scale_val:
+            try:
+                payload["scale"] = float(scale_val)
+            except ValueError:
+                messagebox.showwarning("Aviso", "Scale inválido para keyframe.")
+                return
+        if opacity_val:
+            try:
+                payload["opacity"] = float(opacity_val)
+            except ValueError:
+                messagebox.showwarning("Aviso", "Opacity inválido para keyframe.")
+                return
+        self._current_keyframes().append(payload)
+        self._current_keyframes().sort(key=lambda k: k.get("time", 0))
+        self._refresh_keyframe_list()
+        self._schedule_auto_save()
+
+    def _remove_keyframe(self):
+        sel = self.keyframes_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        del self._current_keyframes()[idx]
+        self._refresh_keyframe_list()
         self._schedule_auto_save()
 
     def _schedule_auto_save(self, event=None):
@@ -1392,6 +1570,9 @@ class EditTab(tk.Frame):
             effects = item.get("effects", {})
             self.zoom_var.set(effects.get("zoom", False))
             self.slide_var.set(effects.get("slide", "none") or "none")
+            blur_entry = effects.get("blur_entry", {}) if isinstance(effects.get("blur_entry"), dict) else {}
+            self.blur_entry_var.set(bool(blur_entry.get("enabled", False)))
+            self._load_keyframes_from_item(item)
 
             stickman_anim = item.get("stickman_anim") or {}
             anim_name = stickman_anim.get("name", "") if isinstance(stickman_anim, dict) else ""
@@ -1452,6 +1633,19 @@ class EditTab(tk.Frame):
                 self.zoom_var.set(False)
 
             self.slide_var.set("none")
+            blur_states = [
+                bool(self.guide_data[i].get("effects", {}).get("blur_entry", {}).get("enabled", False))
+                for i in sel
+            ]
+            if all(blur_states):
+                self.blur_entry_var.set(True)
+            elif not any(blur_states):
+                self.blur_entry_var.set(False)
+            else:
+                self.blur_entry_var.set(False)
+
+            self.keyframes_data = {"image": [], "text": []}
+            self._refresh_keyframe_list()
 
             # Preview mostra primeira imagem
             first_item = self.guide_data[sel[0]]
@@ -1626,10 +1820,25 @@ class EditTab(tk.Frame):
         if slide and slide != "none":
             effects["slide"] = slide
 
+        if self.blur_entry_var.get():
+            effects["blur_entry"] = {"enabled": True}
+
+        if self.keyframes_data.get("image"):
+            effects["keyframes"] = list(self.keyframes_data["image"])
+        if self.keyframes_data.get("text"):
+            effects["text_keyframes"] = list(self.keyframes_data["text"])
+
         if effects:
             self.guide_data[idx]["effects"] = effects
         elif "effects" in self.guide_data[idx]:
             del self.guide_data[idx]["effects"]
+        else:
+            effects = self.guide_data[idx].get("effects", {})
+            if isinstance(effects, dict):
+                effects.pop("keyframes", None)
+                effects.pop("text_keyframes", None)
+                if not effects:
+                    self.guide_data[idx].pop("effects", None)
 
         anim_name = self.stickman_anim_combo.get().strip()
         anim_direction = self.stickman_anim_dir_combo.get().strip()
@@ -1677,7 +1886,8 @@ class EditTab(tk.Frame):
             "Confirmar",
             f"Aplicar effects em {len(sel)} itens selecionados?\n\n"
             f"Zoom: {'SIM' if self.zoom_var.get() else 'NÃO'}\n"
-            f"Slide: {self.slide_var.get().upper()}"
+            f"Slide: {self.slide_var.get().upper()}\n"
+            f"Blur entrada: {'SIM' if self.blur_entry_var.get() else 'NÃO'}"
         ):
             return
 
@@ -1701,6 +1911,9 @@ class EditTab(tk.Frame):
             if slide and slide != "none":
                 effects["slide"] = slide
 
+            if self.blur_entry_var.get():
+                effects["blur_entry"] = {"enabled": True}
+
             if effects:
                 if "effects" not in self.guide_data[idx]:
                     self.guide_data[idx]["effects"] = {}
@@ -1708,6 +1921,13 @@ class EditTab(tk.Frame):
             else:
                 if "effects" in self.guide_data[idx]:
                     del self.guide_data[idx]["effects"]
+
+            if not self.blur_entry_var.get() and "effects" in self.guide_data[idx]:
+                blur_entry = self.guide_data[idx]["effects"].get("blur_entry")
+                if isinstance(blur_entry, dict):
+                    self.guide_data[idx]["effects"].pop("blur_entry", None)
+                if not self.guide_data[idx]["effects"]:
+                    self.guide_data[idx].pop("effects", None)
 
             mode = self._normalize_mode(self.guide_data[idx].get("mode", GUIDE_MODES[1]))
             if mode != "text-only":
